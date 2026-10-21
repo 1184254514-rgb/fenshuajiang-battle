@@ -6,14 +6,20 @@
 
 工程包含从原包提取的 Lua 脚本、配置与资源，以及为其编写的 Godot/Lua 适配代码。本项目与原开发商、发行商和运营方无隶属关系，不代表官方复服，也不表示已完全还原原版。
 
+## 当前开发进度
+
+当前可编辑工程已直接纳入仓库的 [`fsj-orig/`](fsj-orig/) 目录。后续复刻改动会连同源码、测试与差异记录一起同步，不再只上传页面说明。
+
+本轮补齐原包技能 `fx/cast` 释放特效的调用与局域网快照同步，加入去重、过期处理、迟到推进及回归测试；原包逐项核对和仍未解决的差异见 [APK 差异核对](fsj-orig/docs/APK差异核对-2026-10-21.md)。
+
 ## 下载完整工程与游戏
 
-请到 [版本下载页](https://github.com/1184254514-rgb/fenshuajiang-battle/releases/tag/v0.1.0-lan) 下载：
+请到 [版本下载页](https://github.com/1184254514-rgb/fenshuajiang-battle/releases) 获取对应版本的运行包；原始 `v0.1.0-lan` 保留作为历史版本。
 
 - **Windows 运行包**：`fenshuajiang-battle-windows-lan.zip`，解压后运行 EXE，无需安装 Godot。
-- **完整源码工程**：`fenshuajiang-battle-source.zip`，包含 2862 个工程与资源文件。
+- **完整源码工程**：可直接克隆本仓库，打开 `fsj-orig/project.godot`；也可下载对应 Release 的 `fenshuajiang-battle-source.zip`。
 
-游戏和工程以 Releases 附件形式保存。GitHub 自动生成的 `Source code (zip/tar.gz)` 仅是仓库页面内容快照，完整游戏源码请下载上述明确命名的源码包。
+运行包以 Releases 附件保存。当前 GitHub 自动生成的 `Source code (zip/tar.gz)` 也已经包含 `fsj-orig/` 工程；旧版 v0.1.0 的自动源码包仍只有当时的页面内容。
 
 ## 当前版本
 
@@ -31,15 +37,15 @@
 
 本地工程使用 Godot **4.7.2**，渲染模式为 GL Compatibility，包含 lua-gdextension 运行依赖。
 
-1. 从上方版本下载页获取 `fenshuajiang-battle-source.zip` 并解压。
-2. 使用 Godot 导入解压后工程根目录的 `project.godot`。
+1. 克隆本仓库，或获取对应版本的 `fenshuajiang-battle-source.zip` 并解压。
+2. 使用 Godot 导入仓库 `fsj-orig/project.godot`，或独立源码压缩包根目录的 `project.godot`。
 3. 等待首次资源导入完成，运行主场景。
 
 也可以使用命令行（将 `godot` 替换为本机 Godot 可执行文件路径）：
 
 ```powershell
-godot --editor --path .
-godot --path .
+godot --editor --path fsj-orig
+godot --path fsj-orig
 ```
 
 工程已带有 Windows x86_64 与 Android Lua 扩展库；其他平台需自行准备对应扩展。缓存目录 `.godot/` 不纳入版本控制，将由编辑器生成。
@@ -81,7 +87,7 @@ docs/                   项目说明
 
 ## 验证与已知限制
 
-仓库保留了开发期间的测试脚本与验证记录；历史检查结果见两份玩法说明。本次上传不代表重新执行了完整回归测试。
+仓库保留了开发期间的测试脚本与验证记录；历史检查结果见两份玩法说明。每轮只报告实际执行过的验证；本轮结果见 [原 APK 差异核对](fsj-orig/docs/APK差异核对-2026-10-21.md)。
 
 - 联机记录验证了本机两个独立进程的 ENet 通信，尚未在两台物理电脑之间实测。
 - 存在已记录的渲染告警、缺失资源以及待核实的原版机制。

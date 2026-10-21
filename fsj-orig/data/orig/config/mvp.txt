@@ -1,0 +1,8 @@
+KillScore	3	击杀总分
+AreaScore	3	体积总分
+RhythmScore	3	节奏总分
+ActiveScore	1	活跃总分
+StandardKillRadio	0.3	标准击杀比
+StandardAreaRadio	0.2	标准体积比
+MinRhythmRadio	0.9	最低节奏比
+MinActive	0.9	最低活跃

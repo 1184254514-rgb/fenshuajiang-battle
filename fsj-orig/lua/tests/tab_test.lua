@@ -1,0 +1,6 @@
+local raw = ReadGameFileBytes("config/serverlist.txt")
+local buf = CBufferStream:new()
+buf:WriteBytes(raw, 0, #raw); buf:SetPosition(0)
+local t = CTabFile:new()
+local ok = t:Init(buf, #raw)
+return string.format("init=%s h=%s ip=%s open=%s", tostring(ok), tostring(t:GetHeight()), tostring(t:GetString(1, "IP")), tostring(t:GetInteger(1, "Open")))

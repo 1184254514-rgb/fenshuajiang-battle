@@ -1,0 +1,5 @@
+index	combo	level
+0	101	0
+1	51	1
+2	11	2
+3	0	3

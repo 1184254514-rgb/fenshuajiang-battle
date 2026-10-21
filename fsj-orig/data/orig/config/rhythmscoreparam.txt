@@ -1,0 +1,2 @@
+FaultParam	RhythmParam	MaxOneHitScore
+0.0156	0.23	10000

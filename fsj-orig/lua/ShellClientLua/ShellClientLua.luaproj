@@ -1,0 +1,213 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>E439935D-B2A2-46AE-856D-2AA408428F33</ProjectGuid>
+    <!--$guid1$-->
+    <ProjectHome>.</ProjectHome>
+    <StartupFile>
+    </StartupFile>
+    <SearchPath>
+    </SearchPath>
+    <WorkingDirectory>.</WorkingDirectory>
+    <OutputPath>.</OutputPath>
+    <Name>ShellClientLua</Name>
+    <RootNamespace>ShellClientLua</RootNamespace>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <DebugSymbols>true</DebugSymbols>
+    <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+    <DebugSymbols>true</DebugSymbols>
+    <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="CGameClient.lua" />
+    <Compile Include="chat\CNoticeBar.lua" />
+    <Compile Include="chat\CSortInfo.lua" />
+    <Compile Include="gamestart\CGetPropTip.lua" />
+    <Compile Include="gamestart\CGameStartMisc.lua" />
+    <Compile Include="gamestart\CRaceWnd.lua" />
+    <Compile Include="gamestart\CTipWnd.lua" />
+    <Compile Include="gamestart\CWndGuestUpgrade.lua" />
+    <Compile Include="gamestart\CWndSpecialOffer.lua" />
+    <Compile Include="misc\CPlayerRoomMemberInfoMgr.lua" />
+    <Compile Include="misc\CClanLevelConfig.lua" />
+    <Compile Include="misc\CPropBaseConfigMgr.lua" />
+    <Compile Include="misc\CSkillDevelopConfLua.lua" />
+    <Compile Include="playerdata\CPlayerDBClient.lua" />
+    <Compile Include="social\CFriendMgr.lua" />
+    <Compile Include="connect\CGameConnToFieldLua.lua" />
+    <Compile Include="connect\CGameConnToWorldLua.lua" />
+    <Compile Include="debug\CClientCmdMgr.lua" />
+    <Compile Include="debug\CCmdInput.lua" />
+    <Compile Include="social\chat\CContentListPanel.lua" />
+    <Compile Include="social\chat\CContentListItemWnd.lua" />
+    <Compile Include="social\chat\CGMServiceWnd.lua" />
+    <Compile Include="social\chat\CIMFriendWnd.lua" />
+    <Compile Include="social\chat\CIMWorldWnd.lua" />
+    <Compile Include="social\chat\CInstantMessageDataMgr.lua" />
+    <Compile Include="social\chat\CInstantMessageWnd.lua" />
+    <Compile Include="social\chat\CUserListItemWnd.lua" />
+    <Compile Include="social\chat\CWndGMColumn.lua" />
+    <Compile Include="social\clan\CClanMemberItem.lua" />
+    <Compile Include="social\clan\CWndChooseClanIcon.lua" />
+    <Compile Include="social\clan\CWndClan.lua" />
+    <Compile Include="social\clan\CWndClanApplyList.lua" />
+    <Compile Include="social\clan\CWndClanCustomSearch.lua" />
+    <Compile Include="social\clan\CWndClanItem.lua" />
+    <Compile Include="social\clan\CWndClanMemberOpr.lua" />
+    <Compile Include="social\clan\CWndCreateClan.lua" />
+    <Compile Include="social\clan\CWndSetClanInfo.lua" />
+    <Compile Include="social\friend\CCharListItem.lua" />
+    <Compile Include="social\friend\CFindFriendPage.lua" />
+    <Compile Include="social\friend\CFriendInfoPage.lua" />
+    <Compile Include="social\friend\CFriendWnd.lua" />
+    <Compile Include="social\friend\CWndPropellPlayer.lua" />
+    <Compile Include="social\friend\CWndPropellSingle.lua" />
+    <Compile Include="ui_declaration\CWndDeclaration.lua" />
+    <Compile Include="GameClientRequire.lua" />
+    <Compile Include="GameClientInc.lua" />
+    <Compile Include="GameClientLoader.lua" />
+    <Compile Include="gamelogin\CGameLogin.lua" />
+    <Compile Include="gamemain\CGameButton.lua" />
+    <Compile Include="gamemain\CGameMainLua.lua" />
+    <Compile Include="gamemain\CKillInfoWnd.lua" />
+    <Compile Include="gamemain\CNetDelayWnd.lua" />
+    <Compile Include="gamemain\CObserveWnd.lua" />
+    <Compile Include="gamemain\COutInfoWnd.lua" />
+    <Compile Include="gamestart\CActivityWnd.lua" />
+    <Compile Include="gamestart\CGameStartLua.lua" />
+    <Compile Include="misc\CGammaResListener.lua" />
+    <Compile Include="misc\ClientConstValueDefine.lua" />
+    <Compile Include="misc\CPlayerGradeInfoMgr.lua" />
+    <Compile Include="misc\CPlayerGradeInfoMgr.lua" />
+    <Compile Include="misc\CSceneLoading.lua" />
+    <Compile Include="character\CPlayerClientLua.lua" />
+    <Compile Include="misc\CHeadIcon.lua" />
+    <Compile Include="rank\CRankDataMgr.lua" />
+    <Compile Include="scene\CGameSceneClientLua.lua" />
+    <Compile Include="ui_battleface\CWndBattleFaceItem.lua" />
+    <Compile Include="ui_battleface\CWndBuyBattleFace.lua" />
+    <Compile Include="ui_frame\CGEdit.lua" />
+    <Compile Include="ui_frame\CGListCtrl.lua" />
+    <Compile Include="ui_frame\CGRichWnd.lua" />
+    <Compile Include="ui_frame\CGWnd.lua" />
+    <Compile Include="ui_message\CHideMsg.lua" />
+    <Compile Include="ui_message\CMessageBox.lua" />
+    <Compile Include="ui_message\CMessageBox3.lua" />
+    <Compile Include="ui_frame\CWndPropItem.lua" />
+    <Compile Include="ui_guide\CWndGuideSelect.lua" />
+    <Compile Include="ui_guide\CWndGuideVideo.lua" />
+    <Compile Include="ui_guide\CWndVideoOrGuide.lua" />
+    <Compile Include="ui_head\CHeadBar3DUnit.lua" />
+    <Compile Include="ui_head\CHeadWnd.lua" />
+    <Compile Include="ui_head\CLevelTipWnd.lua" />
+    <Compile Include="ui_head\CWndAlterName.lua" />
+    <Compile Include="ui_head\CWndChangeHeadIcon.lua" />
+    <Compile Include="ui_icon\CIconManager.lua" />
+    <Compile Include="ui_icon\CRichIconWnd.lua" />
+    <Compile Include="ui_message\CWaitMsg.lua" />
+    <Compile Include="ui_modeopenlimit\CWndModeLimit.lua" />
+    <Compile Include="ui_modeopenlimit\CWndModeOpenReward.lua" />
+    <Compile Include="ui_music\CWndLoadMusicTips.lua" />
+    <Compile Include="ui_music\CWndMusic.lua" />
+    <Compile Include="rank\CRankWnd.lua" />
+    <Compile Include="ui_music\CWndMusicLoadPro.lua" />
+    <Compile Include="ui_other\CRhythmNoticeBarItem.lua" />
+    <Compile Include="ui_other\CWndBeCommend.lua" />
+    <Compile Include="ui_other\CWndBuyRhythmNoticeBar.lua" />
+    <Compile Include="ui_other\CWndNewLadderSeason.lua" />
+    <Compile Include="ui_other\CWndRename.lua" />
+    <Compile Include="ui_other\CSkinWnd.lua" />
+    <Compile Include="ui_prize\CWndPrizeNotify.lua" />
+    <Compile Include="ui_prize\CWndPrizePropTip.lua" />
+    <Compile Include="ui_setting\CBtnSettingWnd.lua" />
+    <Compile Include="ui_setting\CSettingWnd.lua" />
+    <Compile Include="ui_share\CShareContext.lua" />
+    <Compile Include="ui_share\CShareChannelWnd.lua" />
+    <Compile Include="ui_share\CShareWnd.lua" />
+    <Compile Include="ui_shop\CWndFristChargePrize.lua" />
+    <Compile Include="ui_shop\CWndShop.lua" />
+    <Compile Include="ui_shop\CWndShopDiamond.lua" />
+    <Compile Include="ui_shop\vip\CWndChargeVip.lua" />
+    <Compile Include="ui_shop\vip\CWndVip.lua" />
+    <Compile Include="ui_shop\vip\CWndVipDesc.lua" />
+    <Compile Include="ui_skill\CSkillDevelopWnd.lua" />
+    <Compile Include="ui_task\CTaskTipWnd.lua" />
+    <Compile Include="ui_team\CRaceRoomWnd.lua" />
+    <Compile Include="ui_team\CSecretMatchWnd.lua" />
+    <Compile Include="ui_team\CTeamMatchWnd.lua" />
+    <Compile Include="ui_team\CTeamWnd.lua" />
+    <Compile Include="ui_treasurebox\CWndAccountLevel.lua" />
+    <Compile Include="ui_treasurebox\CWndCollectPro.lua" />
+    <Compile Include="ui_treasurebox\CWndFusion.lua" />
+    <Compile Include="ui_treasurebox\CWndFusionSkinItem.lua" />
+    <Compile Include="ui_treasurebox\CWndFusionSuccess.lua" />
+    <Compile Include="ui_treasurebox\CWndTreasureBox.lua" />
+    <Compile Include="ui_treasurebox\CWndTreasureBoxItem.lua" />
+    <Compile Include="ui_treasurebox\CWndNewTreasureBox.lua" />
+    <Compile Include="ui_treasurebox\CWndTreasureBoxOpen.lua" />
+    <Compile Include="ui_treasurebox\CWndTreasureBoxOpretionTips.lua" />
+    <Compile Include="wanfa\CWanfaEndless.lua" />
+    <Compile Include="wanfa\CWanfaServer.lua" />
+    <Compile Include="wanfa\ui\CWndBalance.lua" />
+    <Compile Include="wanfa\ui\CWndBalanceShare.lua" />
+    <Compile Include="wanfa\ui\CWndLadder.lua" />
+    <Compile Include="wanfa\ui\CWndResultEndless.lua" />
+    <Compile Include="wanfa\ui\CWndRhythmData.lua" />
+    <Compile Include="wanfa\ui\CWndRhythmSett.lua" />
+    <Compile Include="wanfa\ui\CWndSettlemet.lua" />
+    <Compile Include="wanfa\ui\CWndSettLimit.lua" />
+    <Compile Include="wanfa\ui\CWndSettScore.lua" />
+    <Compile Include="wanfa\ui\CWndSettTeam.lua" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ShellCommonLua\ShellCommonLua.luaproj">
+      <Name>ShellCommonLua</Name>
+      <Project>{786b21ab-52f5-441e-8a1c-e61559d892f6}</Project>
+      <Private>True</Private>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="debug\" />
+    <Folder Include="misc\" />
+    <Folder Include="gamemain\" />
+    <Folder Include="gamestart\" />
+    <Folder Include="connect\" />
+    <Folder Include="character\" />
+    <Folder Include="social\clan\" />
+    <Folder Include="ui_message\" />
+    <Folder Include="ui_shop\vip\" />
+    <Folder Include="ui_task\" />
+    <Folder Include="ui_prize\" />
+    <Folder Include="ui_shop\" />
+    <Folder Include="playerdata\" />
+    <Folder Include="ui_skill\" />
+    <Folder Include="ui_icon\" />
+    <Folder Include="social\" />
+    <Folder Include="social\friend\" />
+    <Folder Include="social\chat\" />
+    <Folder Include="ui_declaration\" />
+    <Folder Include="ui_treasurebox\" />
+    <Folder Include="gamelogin\" />
+    <Folder Include="ui_battleface\" />
+    <Folder Include="ui_guide\" />
+    <Folder Include="rank\" />
+    <Folder Include="ui_modeopenlimit\" />
+    <Folder Include="ui_other\" />
+    <Folder Include="ui_share\" />
+    <Folder Include="ui_music\" />
+    <Folder Include="wanfa\" />
+    <Folder Include="chat\" />
+    <Folder Include="ui_head\" />
+    <Folder Include="ui_team\" />
+    <Folder Include="ui_setting\" />
+    <Folder Include="scene\" />
+    <Folder Include="ui_frame\" />
+    <Folder Include="wanfa\ui\" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.Common.targets" />
+</Project>

@@ -1,0 +1,18 @@
+# Generated caches and local configuration
+**/.godot/
+**/__pycache__/
+**/*.pyc
+**/.DS_Store
+**/export_credentials.cfg
+**/override.cfg
+**/.env
+**/.env.*
+# Runtime/export artifacts belong in Releases, not source history.
+*.apk
+*.apk.1
+*.exe
+*.pck
+*.zip
+*.log
+/release-build/
+/artifacts/

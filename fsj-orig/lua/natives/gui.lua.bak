@@ -1,0 +1,58 @@
+-- Window (CGWnd family) natives backed by Godot GuiWnd nodes (scripts/gui_runtime.gd). Claude.
+-- A Lua window object is a table whose field `__node` is the GuiWnd; the node stores the Lua table in meta "lua".
+-- NOTE: the original Lua (ui_frame/CGWnd.lua) wraps CGWnd.GetDlgChild / CGWnd.CreateFromRes / CGWnd.OnMsgDispatch, so
+-- these must exist as plain native functions BEFORE the original scripts load. Event listeners (AddEventListener ...)
+-- are implemented in the original Lua on top of OnMsgDispatch.
+
+local function wrap(node)
+	if node == nil then return nil end
+	local w = node:get_meta("lua", nil)
+	if w ~= nil then return w end
+	local cls = rawget(_G, node:class_of()) or CGWnd
+	w = setmetatable({ __node = node }, cls)
+	node:set_meta("lua", w)
+	return w
+end
+WrapWnd = wrap
+
+function CGWnd.CreateFromRes(self, szResName, wndParent, nLoadType)
+	local pn = wndParent and wndParent.__node or nil
+	local n = Host:create_gui(szResName, pn)
+	if n == nil then return false end
+	self.__node = n
+	n:set_meta("lua", self)
+	-- nLoadType: 0 = show now, 1 = load hidden, 2 = load when first shown (we load at once, hidden)
+	if (nLoadType or 0) ~= 0 then n:show_wnd(false) end
+	if not self.__deferCreated then self:OnCreated() end
+	return true
+end
+
+function CGWnd.GetDlgChild(self, szPath) return wrap(self.__node:child(szPath)) end
+function CGWnd.OnMsgDispatch(self, nInputID, pWnd, nMessage, wParam, lParam) return true end
+function CGWnd:GetClassName() return self.__node:class_of() end
+-- default lifecycle hooks (the original scripts override them)
+function CGWnd:OnCreated() end
+function CGWnd:OnWndShow(bShow) end
+function CGWnd:OnDestroy() end
+function CGWnd:ShowWnd(b)
+	local node = self.__node
+	b = b and true or false
+	local changed = node:is_shown() ~= b
+	node:show_wnd(b)
+	if changed then self:OnWndShow(b) end
+end
+function CGWnd:IsShow() return self.__node:is_shown() end
+function CGWnd:GetWndName() return self.__node and self.__node.name or "" end
+function CGWnd:SetWndText(s) self.__node:set_wnd_text(tostring(s)) end
+function CGWnd:GetWndText() return self.__node:get_wnd_text() end
+function CGWnd:GetWndWidth() return self.__node:get_w() end
+function CGWnd:GetWndHeight() return self.__node:get_h() end
+function CGWnd:DestroyWnd()
+	if self.__node then
+		self:OnDestroy()
+		self.__node:destroy()
+		self.__node = nil
+	end
+end
+function CGWnd:IsCreated() return self.__node ~= nil end
+function CGWnd:SetFocus() end

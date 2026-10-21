@@ -1,0 +1,59 @@
+{
+  "ShellClientLua": {
+    "apk_count": 139,
+    "missing": [],
+    "different": [
+      "CGameClient.lua",
+      "GameClientInc.lua",
+      "GameClientLoader.lua",
+      "character\\CPlayerClientLua.lua",
+      "debug\\CClientCmdMgr.lua",
+      "gamemain\\CGameMainLua.lua",
+      "gamestart\\CGameStartLua.lua",
+      "playerdata\\CPlayerDBClient.lua",
+      "ui_frame\\CGListCtrl.lua",
+      "ui_frame\\CGWnd.lua",
+      "ui_head\\CHeadWnd.lua",
+      "ui_head\\CWndChangeHeadIcon.lua"
+    ]
+  },
+  "ShellCommonLua": {
+    "apk_count": 37,
+    "missing": [],
+    "different": [
+      "Common.lua",
+      "misc\\CBufferStream.lua",
+      "misc\\CEventDispatcher.lua",
+      "misc\\CommonConstDefine.lua",
+      "misc\\ConfigLoadHelp.lua",
+      "misc\\Help.lua",
+      "protocal\\PrtShellClient2Rank.lua",
+      "protocal\\PrtShellClient2Social.lua",
+      "protocal\\PrtShellSocial2Client.lua"
+    ]
+  },
+  "skill/skilllevel.txt": {
+    "same": true
+  },
+  "resource/skill.txt": {
+    "same": true
+  },
+  "resource/equip.txt": {
+    "same": true
+  },
+  "constant.txt": {
+    "same": true
+  },
+  "scene_list.xml": {
+    "same": true
+  },
+  "apk_sha256": "fe6c45a7196145293f8638c7f88fc253acb39054267374c8e488120d19480db4",
+  "text_normalization": {
+    "source_encodings": [
+      "UTF-8",
+      "GB18030"
+    ],
+    "ignore_line_endings": true,
+    "normalized_script_differences": []
+  }
+}

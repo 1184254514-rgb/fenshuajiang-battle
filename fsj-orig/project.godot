@@ -1,0 +1,29 @@
+; 粉刷匠 original-faithful rebuild (Godot 4). Claude.
+config_version=5
+
+[application]
+
+config/name="粉刷匠大作战 (原版还原)"
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="keep"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/canvas_textures/default_texture_filter=1
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/lan_export/plugin.cfg")
+
+[lua_gdextension]
+
+lua_script_language/script_import_map={}

@@ -1,0 +1,141 @@
+class_name GuiRuntime
+extends RefCounted
+# Builds Godot Controls from the JSON converted from the original .gui layout files (Claude).
+# A .gui is a tree of windows; each window has per-state image lists (state 2 = normal, 5 = pressed for buttons),
+# an image = atlas texture index + source rect (atlas pixels) + destination rect (window-local) + 0xAARRGGBB colour.
+# Texture index 0xFFFFFFFF = plain colour fill. A source rect with right < left (or bottom < top) means flipped.
+
+const GUI_DIR := "res://data/gui/"
+const TEX_DIR := "res://assets/tex/"
+
+static var _json_cache := {}
+static var _tex_cache := {}
+
+static func load_json(gui_name: String) -> Dictionary:
+	if _json_cache.has(gui_name):
+		return _json_cache[gui_name]
+	var f := FileAccess.open(GUI_DIR + gui_name + ".json", FileAccess.READ)
+	if f == null:
+		push_error("missing gui json " + gui_name)
+		return {}
+	var d: Dictionary = JSON.parse_string(f.get_as_text())
+	_json_cache[gui_name] = d
+	return d
+
+static func atlas(path: String) -> Texture2D:
+	# "./../tex/fs_jm002.tex" -> res://assets/tex/fs_jm002.png
+	var base := path.get_file().get_basename()
+	if not _tex_cache.has(base):
+		var p := TEX_DIR + base + ".png"
+		_tex_cache[base] = load(p) if ResourceLoader.exists(p) else null
+	return _tex_cache[base]
+
+static func argb(u: int) -> Color:
+	return Color(((u >> 16) & 255) / 255.0, ((u >> 8) & 255) / 255.0, (u & 255) / 255.0, ((u >> 24) & 255) / 255.0)
+
+static func build(gui_name: String) -> GuiWnd:
+	var d := load_json(gui_name)
+	var textures: Array = []
+	for t in d["textures"]:
+		textures.append(atlas(t) if t != "" else null)
+	var root := GuiWnd.new()
+	root.setup(d["window"], textures, "")
+	return root
+
+
+class GuiWnd extends Control:
+	var data: Dictionary
+	var textures: Array
+	var key := ""
+	var state := 2
+	var images_by_state: Array = []   # Array of Array[Dictionary]
+	var kids := {}
+
+	func setup(w: Dictionary, tex: Array, k: String) -> void:
+		data = w; textures = tex; key = k
+		visible = true
+		name = k if k != "" else str(w.get("class_name", "Wnd"))
+		var b: Dictionary = w["base_fields"]
+		position = Vector2(float(b["this+0x10"]), float(b["this+0x14"]))
+		size = Vector2(float(b["this+0x18"]), float(b["this+0x1c"]))
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		for ci in w.get("child_window_infos", []):
+			var lists: Array = ci.get("image_lists", [])
+			if lists.size() > 0:
+				for il in lists:
+					images_by_state.append(il.get("images", []))
+				break
+		for c in w.get("children", []):
+			var kid := GuiWnd.new()
+			kid.setup(c["window"], tex, c["name"])
+			add_child(kid)
+			kids[c["name"]] = kid
+
+	func _draw() -> void:
+		if state >= images_by_state.size():
+			return
+		for im in images_by_state[state]:
+			_draw_image(im)
+
+	func _draw_image(im: Dictionary) -> void:
+		var dr: Dictionary = im["destination_rect"]
+		var rect := Rect2(dr["left"], dr["top"], dr["right"] - dr["left"], dr["bottom"] - dr["top"])
+		var col := GuiRuntime.argb(int(im["color_or_flags_u32"]))
+		var ti := int(im["texture_index"])
+		if ti < 0 or ti >= textures.size() or textures[ti] == null:
+			draw_rect(rect, col)
+			return
+		var s: Dictionary = im["source_rect"]
+		var l: float = s["left"]; var t: float = s["top"]; var r: float = s["right"]; var bt: float = s["bottom"]
+		var fx := r < l; var fy := bt < t
+		var src := Rect2(minf(l, r), minf(t, bt), absf(r - l), absf(bt - t))
+		if fx or fy:
+			var c := rect.position + rect.size * 0.5
+			draw_set_transform(c, 0.0, Vector2(-1.0 if fx else 1.0, -1.0 if fy else 1.0))
+			draw_texture_rect_region(textures[ti], Rect2(-rect.size * 0.5, rect.size), src, col)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		else:
+			draw_texture_rect_region(textures[ti], rect, src, col)
+
+	func find_wnd(k: String) -> GuiWnd:
+		if kids.has(k):
+			return kids[k]
+		for kid in kids.values():
+			var r: GuiWnd = kid.find_wnd(k)
+			if r != null:
+				return r
+		return null
+
+	# ---- API used by the Lua natives (see lua/natives/gui.lua) ----
+	var wnd_text := ""
+	func class_of() -> String:
+		return str(data.get("class_name", "CGWnd"))
+	func child(path: String) -> GuiWnd:
+		var cur: GuiWnd = self
+		for part in path.split("."):
+			if part == "":
+				continue
+			if not cur.kids.has(part):
+				return null
+			cur = cur.kids[part]
+		return cur
+	func show_wnd(b: bool) -> void:
+		visible = b
+	func is_shown() -> bool:
+		return visible
+	func set_wnd_text(t: String) -> void:
+		wnd_text = t
+		queue_redraw()
+	func get_wnd_text() -> String:
+		return wnd_text
+	func set_pos(x: float, y: float) -> void:
+		position = Vector2(x, y)
+	func get_w() -> float:
+		return size.x
+	func get_h() -> float:
+		return size.y
+	func destroy() -> void:
+		queue_free()
+	func set_state(st: int) -> void:
+		state = st
+		queue_redraw()

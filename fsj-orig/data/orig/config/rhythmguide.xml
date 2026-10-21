@@ -1,0 +1,18 @@
+﻿<!-- 
+	
+  StepStart  nInitPos-初始玩家位置  nInitWidth-领地的宽  nInitHeight-领地的高，单位都是格子
+  Dialog  正常对话框 szString-内容
+  MoveTarget  玩家需要移动  nDir-方向 nLen长度(格子数) nInitCount-几次移动后开始判断 nCount-连续几次之后判断是否继续 bShowMeter-是否显示节奏 nMeterFadeTime-节奏框淡入时间
+  JudgeDialog 判断对话，成功则继续 szStringFail-失败后的提示字典号  nFailStep-失败后要返回的步骤（所有步骤从0开始）
+  StepEnd	结束后显示的内容
+-->
+<downment nickname="10000029" musicid="21" equipid="1">
+	<StepStart nInitPosX="50" nInitPosY="50"  nInitWidth="5" nInitHeight="4" color="1"></StepStart>
+	<Dialog szString="1c000050"></Dialog>
+	<MoveTarget nDir="15" nInitCount="3" nCount="10" bShowMeter="1" nMeterFadeTime="0" ></MoveTarget>
+	<JudgeDialog szStringFail="1c000051" nFailStep="1" ></JudgeDialog>
+	<Dialog szString="1c000052"></Dialog>
+	<MoveTarget nDir="15" nInitCount="3" nCount="15" bShowMeter="0" nMeterFadeTime="3000"></MoveTarget>
+	<JudgeDialog szStringFail="1c000053" nFailStep="4" ></JudgeDialog>
+	<StepEnd szString="1c000054"></StepEnd>
+</downment>

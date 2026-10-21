@@ -1,0 +1,63 @@
+﻿<root>
+  <item name='eVRT_OK'                     id='1' desc='20000000'/>	
+  <item name='eVRT_Unknown'                id='2' desc='20000001'/>	
+  <item name='eVRT_InvalidVersion'         id='3' desc='20000002'/>	
+  <item name='eVRT_InvalidLoginMsg'        id='4' desc='20000003'/>	
+  <item name='eVRT_InvalidCharStateMsg'    id='5' desc='20000004'/>	
+  <item name='eVRT_NotBillingConnected'    id='6' desc='20000005'/>	
+  <item name='eVRT_BillingOverload'        id='7' desc='20000006'/>	
+  <item name='eVRT_QueryURLFailed'         id='8' desc='20000007'/>	
+  <item name='eVRT_QueryURLTimeOut'        id='9' desc='20000008'/>	
+  <item name='eVRT_InvalidChannel'         id='10' desc='20000009'/>	
+  <item name='eVRT_UserValidFaile'         id='11' desc='2000000a'/>	
+  <item name='eVRT_NotFindChannel'         id='12' desc='2000000b'/>	
+  <item name='eVRT_NotFindChannelService'  id='13' desc='2000000c'/>	
+  <item name='eVRT_UserCannotBeEmpty'      id='14' desc='2000000d'/>	
+  <item name='eVRT_AccountIDError'         id='15' desc='2000000e'/>	
+  <item name='eVRT_AccountFreeze'          id='16' desc='2000000f'/>	
+  <item name='eVRT_DatabaseOverload'      id='17' desc='20000010'/>	
+  <item name='eVRT_TrusteeTimeOut'	    id='18' desc='20000011'/>
+  <item name='eVRT_QueryDbAccountFailed'   id='19' desc='20000012'/>	
+  <item name='eVRT_InsertDbCharFailed'    id='20' desc='20000013'/>
+  <item name='eVRT_RoleFreeze'             id='21' desc='20000014'/>	
+  <item name='eVRT_SameRoleName'           id='22' desc='20000015'/>	
+  <item name='eVRT_KickCreateCharNameLen'  id='23' desc='20000016'/>	
+  <item name='eVRT_SpecialChar'            id='24' desc='20000017'/>	
+  <item name='eVRT_KickCreateCharSex'      id='25' desc='20000018'/>	
+  <item name='eVRT_KickCreateCharSize'     id='26' desc='20000019'/>	
+  <item name='eVRT_KickCreateCharState'    id='27' desc='2000001a'/>	
+  <item name='eVRT_RepeatCreateCharMsg'    id='28' desc='2000001b'/>	
+  <item name='eVRT_DeleteInvalidChar'      id='29' desc='2000001c'/>	
+  <item name='eVRT_DataCommiting'  id='30' desc='2000001d'/>	
+  <item name='eVRT_RepeatDelCharMsg'       id='31' desc='2000001e'/>	
+  <item name='eVRT_QueryCharImageNotExist' id='32' desc='2000001f'/>	
+  <item name='eVRT_QueryCharImageFailed'   id='33' desc='20000020'/>	
+  <item name='eVRT_CharInOtherGas'         id='34' desc='20000021'/>	
+  <item name='eVRT_CharDBOnline'           id='35' desc='20000022'/>	
+  <item name='eVRT_CharOnline'             id='36' desc='20000023'/>	
+  <item name='eVRT_CharNotExist'           id='37' desc='20000024'/>	
+  <item name='eVRT_CharLoginFailed'        id='38' desc='20000025'/>	
+  <item name='eVRT_SwitchToCharNotInGame'  id='39' desc='20000026'/>	
+  <item name='eVRT_GacQueryExit'           id='40' desc='20000027'/>	
+  <item name='eVRT_ServerShutdown'         id='41' desc='20000028'/>	
+  <item name='eVRT_GacDisConnect'          id='42' desc='20000029'/>	
+  <item name='eVRT_ServerOverload'         id='43' desc='2000002a'/>	
+  <item name='eVRT_NotFindServer'          id='44' desc='2000002b'/>	
+  <item name='eVRT_KickOnMsgError'         id='45' desc='2000002c'/>	
+  <item name='eVRT_BillingTimeOut'         id='46' desc='2000002d'/>	
+  <item name='eVRT_DatabassTimeOut'        id='47' desc='2000002e'/>	
+  <item name='eVRT_BeReplaced'             id='48' desc='2000002f'/>	
+  <item name='eVRT_ReplaceFailed'          id='49' desc='20000030'/>	
+  <item name='eVRT_KickAnswerCharInfo'     id='50' desc='20000031'/>	
+  <item name='eVRT_AllocCharPropDBFaile'   id='51' desc='20000032'/>	
+  <item name='eVRT_AnswerCharInfoFailed'   id='52' desc='20000033'/>	
+  <item name='eVRT_SkillPosCheckError'    id='53' desc='20000034'/>	
+  <item name='eVRT_MoveToError'            id='54' desc='20000035'/>	
+  <item name='eVRT_StopMoveError'          id='55' desc='20000036'/>	
+  <item name='eVRT_PosCheckError'          id='56' desc='20000037'/>	
+  <item name='eVRT_MoveSpeedCheckError'      id='57' desc='20000039'/>	
+<item name='eVRT_SkillIDError'             id='58' desc='20000040'/>	
+<item name='eVRT_SkillLevelError'          id='59' desc='20000041'/>	
+<item name='eVRT_WorldLogout'              id='60' desc='20000042'/>
+<item name='eVRT_KickByGM'              id='61' desc='20000043'/>
+</root>

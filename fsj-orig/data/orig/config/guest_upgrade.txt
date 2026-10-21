@@ -1,0 +1,3 @@
+nLoginCount	0
+nGoldCount	10000
+nRainbowGoldCount	50

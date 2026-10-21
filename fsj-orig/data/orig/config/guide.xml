@@ -1,0 +1,87 @@
+﻿<!-- 
+	eDT_Left			= 0,
+	eDT_Right			= 1,
+	eDT_Up				= 2,
+	eDT_Bottom			= 3,
+  
+  单位统一使用-格子数
+  
+  Step1  nInitPos-初始玩家位置  nInitWidth-领地的宽  nInitHeight-领地的高
+  Dialog  正常对话框 szString-内容
+  MoveTarget  玩家需要移动  nDir-方向 nLen长度(格子数)
+  JudgeDialog 判断对话 nRate-节奏正确率  大于使用szString1内容，反之使用szString2
+  DirButtonEffect 方向键上的特效 show-是否显示
+  PlayWndEffect 播放一个全屏特效  szEffectFile-特效文件名  nEffectTime-特效时长
+  
+  CreatePlayAndMove 初始化敌方玩家 nInitPosX-位置x nInitPosY-位置y nInitWidth-领地宽度 nInitHeight-领地高度  EnemyName-名字  equipid-装备
+    Move  nDir-方向 nLen-长度 nSpeed-速度
+  
+  JudgeDialog
+    如果命中率大于rate%，则显示对话szString1
+    如果命中率小于rate%，并且出现了长按，则显示对话szString2
+    如果命中率小于rate%，没有出现长按，但点击次数小于click，则显示szString3
+    如果命中率小于rate%，没有出现长按，点击次数大于click，则显示szString4
+    
+   MoveCamera 拉高镜头
+    height-高度
+    speed-速度
+    syn-是否同步
+-->
+<downment nickname="10000029" musicid="21" equipid="1">
+  <Step1 nInitPosX="40" nInitPosY="40"  nInitWidth="44" nInitHeight="4" color="1"></Step1>
+  <Dialog szString="1c000013"></Dialog>
+  <DirButtonEffect show="1"></DirButtonEffect>
+  <PlayWndEffect szEffectFile="fx/cfg/xszy_1.eft" nEffectTime="3000"></PlayWndEffect>
+  <DirButtonEffect show="1"></DirButtonEffect>  
+  <Dialog szString="1c000001"></Dialog>
+  <DirButtonEffect show="0"></DirButtonEffect>  
+  <Dialog szString="1c000008"></Dialog>
+  <MoveTarget nDir="2" nLen="32" bShowEffect="1"></MoveTarget>
+  <JudgeDialog rate="50" click="5" szString1="10000001" szString2="10000002" szString3="10000002" szString4="10000002" playeffect="0"></JudgeDialog>
+  <JudgeDialog rate="50" click="5" szString1="1c000002" szString2="1c000009" szString3="1c000010" szString4="1c000011" playeffect="1"></JudgeDialog>
+  <MoveTarget nDir="1" nLen="42" bShowEffect="1"></MoveTarget>
+  <JudgeDialog rate="50" click="5" szString1="10000001" szString2="10000002"  szString3="10000002" szString4="10000002" playeffect="0"></JudgeDialog>
+  <JudgeDialog rate="50" click="5" szString1="1c000012" szString2="1c000009" szString3="1c000010" szString4="1c000011" playeffect="1"></JudgeDialog>
+  <PlayWndEffect szEffectFile="fx/cfg/xszy_2.eft" nEffectTime="3000"></PlayWndEffect> 
+  <Dialog szString="1c000003"></Dialog>
+  <MoveCamera height="1000" speed="250" syn="0"></MoveCamera>
+  <MoveTarget nDir="3" nLen="33" bShowEffect="1"></MoveTarget>
+  <Dialog szString="1c000004"></Dialog>
+  <MoveCamera height="350" speed="550" syn="0"></MoveCamera>
+  <Dialog szString="1c000026"></Dialog>
+  <CreatePlayAndMove nInitPosX="72" nInitPosY="39" nInitWidth="11" nInitHeight="11" EnemyName="1c000024" equipid="1" color="3" >
+    <Move nDir="1" nLen="12" nSpeed="200"></Move>
+    <Move nDir="3" nLen="120" nSpeed="200"></Move>
+  </CreatePlayAndMove>  
+  <MoveTarget nDir="1" nLen="11" bShowEffect="1"></MoveTarget>
+  <Dialog szString="1c000027"></Dialog>  
+  <MoveTarget nDir="2" nLen="11" bShowEffect="1"></MoveTarget>
+  <Dialog szString="1c000028"></Dialog>  
+  <MoveTarget nDir="0" nLen="12" bShowEffect="1"></MoveTarget>
+  <Wait time="1000"></Wait>  
+  <Dialog szString="1c000029"></Dialog>
+  <PlayWndEffect szEffectFile="fx/cfg/xszy_3.eft" nEffectTime="3000"></PlayWndEffect>   
+<CreatePlayAndMove nInitPosX="72" nInitPosY="61" nInitWidth="11" nInitHeight="11" EnemyName="1c000025" equipid="1" color="7" >
+    <Move nDir="0" nLen="18" nSpeed="200"></Move>
+    <Move nDir="3" nLen="120" nSpeed="200"></Move>
+  </CreatePlayAndMove>  
+  <Dialog szString="1c000030"></Dialog>  
+  <MoveTarget nDir="2" nLen="15" bShowEffect="1"></MoveTarget>  
+  <Dialog szString="1c000031"></Dialog>
+<CreatePlayAndMove nInitPosX="72" nInitPosY="76" nInitWidth="11" nInitHeight="11" EnemyName="1c000033" equipid="1" color="9" >
+    <Move nDir="3" nLen="14" nSpeed="200"></Move>
+    <Move nDir="1" nLen="120" nSpeed="200"></Move>
+  </CreatePlayAndMove>   
+  <Dialog szString="1c000032"></Dialog>  
+  <MoveTarget nDir="1" nLen="15" bShowEffect="1"></MoveTarget>    
+  <Wait time="1500"></Wait>
+  <Step3 szString="1c000006"></Step3>
+</downment>
+
+<!--
+初始领地的中心点
+初始领地的长和宽
+初始人物的位置固定在领地右下角，朝向固定向右
+敌人领地的位置相对我的领地中心点的偏移
+敌人领地的长和宽
+-->

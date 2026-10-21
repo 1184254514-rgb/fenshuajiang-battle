@@ -1,0 +1,259 @@
+﻿<document>
+  <!--
+    nRoomType 房间类型 0单机 1服务器单人 2服务器团队  3指引	7私人限时	8私人团战	9限时赛事	10团战赛事	13限时现金赛
+    nWidth 场景宽度
+    nDepth 场景深度
+    nSunDirX 太阳光方向X
+    nSunDirY 太阳光方向Y
+    nSunDirZ 太阳光方向Z
+    nLimitTime "房间限时时间,单位为毫秒"(不限时填 -1 )
+    bServer 是否是服务器本
+    
+    nAddAiInterval AI添加时间间隔，毫秒
+    nMaxCount 场景最多人数
+    nLimitAi AI弥补空位上限（需要小于最多人数）
+    nLimitRemainTime 不进入结束时间小于x毫秒的房间
+    nLimitArea 不进入房间剩余面积比例小于此的房间（万分比）
+    
+    nGameTime 游戏时间毫秒
+  -->
+  
+  <scene nRoomType='0' nWidth='1920' nDepth='1920' nLimitTime='-1' nSunDirX='0' nSunDirY='-10' nSunDirZ='3' bServer='0'>
+    <extend  nAddAiInterval='2000' nMaxCount='10' nLimitAi='9'></extend>
+    <maps >
+    	<mapid  ID="1" ></mapid>
+    </maps>    
+    <aiconfig>
+      <time nGameTime='0'>
+        <AI nID='1' nCount='4' />
+        <AI nID='21' nCount='0' />
+      </time>
+      <time nGameTime='12000'>
+        <AI nID='2' nCount='4' />
+        <AI nID='21' nCount='1' />
+      </time>
+      <time nGameTime='24000'>
+        <AI nID='3' nCount='5' />
+        <AI nID='21' nCount='1' />
+      </time>
+      <time nGameTime='36000'>
+        <AI nID='4' nCount='5' />
+        <AI nID='21' nCount='2' />
+      </time>
+      <time nGameTime='48000'>
+        <AI nID='5' nCount='6' />
+        <AI nID='21' nCount='2' />
+      </time>
+      <time nGameTime='60000'>
+        <AI nID='11' nCount='6' />
+        <AI nID='21' nCount='3' />
+      </time>
+      <time nGameTime='90000'>
+        <AI nID='12' nCount='6' />
+        <AI nID='22' nCount='3' />
+      </time>
+      <time nGameTime='120000'>
+        <AI nID='13' nCount='6' />
+        <AI nID='23' nCount='3' />
+      </time>
+      <time nGameTime='150000'>
+        <AI nID='14' nCount='6' />
+        <AI nID='24' nCount='3' />
+      </time>
+      <time nGameTime='180000'>
+        <AI nID='15' nCount='6' />
+        <AI nID='25' nCount='3' />
+      </time>
+      <time nGameTime='210000'>
+        <AI nID='15' nCount='5' />
+        <AI nID='25' nCount='4' />
+      </time>
+      <time nGameTime='240000'>
+        <AI nID='15' nCount='4' />
+        <AI nID='25' nCount='5' />
+      </time>
+      <time nGameTime='270000'>
+        <AI nID='15' nCount='3' />
+        <AI nID='25' nCount='6' />
+      </time>
+      <time nGameTime='300000'>
+        <AI nID='15' nCount='2' />
+        <AI nID='25' nCount='7' />
+      </time>
+      <time nGameTime='330000'>
+        <AI nID='15' nCount='2' />
+        <AI nID='25' nCount='6' />
+        <AI nID='35' nCount='1' />
+      </time>
+      <time nGameTime='360000'>
+        <AI nID='15' nCount='2' />
+        <AI nID='25' nCount='5' />
+        <AI nID='35' nCount='2' />
+      </time>
+      <time nGameTime='390000'>
+        <AI nID='15' nCount='2' />
+        <AI nID='25' nCount='4' />
+        <AI nID='35' nCount='3' />
+      </time>
+      <time nGameTime='420000'>
+        <AI nID='15' nCount='2' />
+        <AI nID='25' nCount='3' />
+        <AI nID='35' nCount='4' />
+      </time>
+      <time nGameTime='450000'>
+        <AI nID='15' nCount='2' />
+        <AI nID='25' nCount='2' />
+        <AI nID='35' nCount='5' />
+      </time>
+      <time nGameTime='480000'>
+        <AI nID='15' nCount='2' />
+        <AI nID='25' nCount='1' />
+        <AI nID='35' nCount='6' />
+      </time>
+      <time nGameTime='510000'>
+        <AI nID='15' nCount='1' />
+        <AI nID='25' nCount='1' />
+        <AI nID='35' nCount='7' />
+      </time>
+    </aiconfig>
+  </scene>
+  <scene nRoomType='1' nWidth='1920' nDepth='1920'  nLimitTime='240000' nSunDirX='0' nSunDirY='-10' nSunDirZ='3' bServer='1'>
+    <extend nAddAiInterval='15000' nLimitRemainTime='180000' nLimitArea='500' nMaxCount='10' nLimitAi='9'></extend>
+    <maps >
+    	<mapid  ID="1" ></mapid>
+    </maps>    
+    <aiconfig>
+      <time nGameTime='0'>
+        <AI nID='11' nCount='3' />
+        <AI nID='25' nCount='0' />
+        <AI nID='35' nCount='0' />
+      </time>
+      <time nGameTime='15000'>
+        <AI nID='11' nCount='3' />
+        <AI nID='25' nCount='1' />
+        <AI nID='35' nCount='0' />
+      </time>
+      <time nGameTime='30000'>
+        <AI nID='11' nCount='3' />
+        <AI nID='25' nCount='2' />
+        <AI nID='35' nCount='1' />
+      </time>
+      <time nGameTime='45000'>
+        <AI nID='11' nCount='4' />
+        <AI nID='25' nCount='3' />
+        <AI nID='35' nCount='1' />
+      </time>
+      <time nGameTime='60000'>
+        <AI nID='11' nCount='4' />
+        <AI nID='25' nCount='3' />
+        <AI nID='35' nCount='2' />
+      </time>
+    </aiconfig>
+  </scene>
+  <scene nRoomType='2' nWidth='1920' nDepth='1920'  nLimitTime='300000' nSunDirX='0' nSunDirY='-10' nSunDirZ='3' bServer='1'>
+    <extend nManorWidth="160"></extend>
+    <maps >
+    	<mapid  ID="1" ></mapid>
+    	<mapid  ID="2" ></mapid>
+    	<mapid  ID="3" ></mapid>
+    </maps>    
+    <ais>
+      <!--- 如果没有找到，则使用最后一份ai配置 -->
+      <ai nTeamLevel="1" nID1="1011" nID2="1011" nID3="1011" nID4="1011"></ai>
+    </ais>
+    <colors>
+      <color nID1="1" nID2="3" nID3="7"></color>
+      <color nID1="1" nID2="7" nID3="3"></color>
+      <color nID1="3" nID2="1" nID3="7"></color>
+      <color nID1="3" nID2="7" nID3="1"></color>
+      <color nID1="7" nID2="1" nID3="3"></color>
+      <color nID1="7" nID2="3" nID3="1"></color>
+    </colors>
+    <poses>
+<!--- mapID表示这个出生方案用的哪个地图方案，如果这个ID是一个没有在map配置表中配置的数值，比如99999，则默认全部是初始格子 -->
+      <pos mapID="1" x1="960" y1="1600" x2="320" y2="880" x3="1600" y3="880" ></pos>
+      <pos mapID="2" x1="960" y1="1200" x2="720" y2="720" x3="1216" y3="720" ></pos>
+      <pos mapID="3" x1="960" y1="480" x2="560" y2="1200" x3="1360" y3="1200" ></pos>
+    </poses>
+  </scene>
+  <scene nRoomType='3' nWidth='2000' nDepth='2000'  nLimitTime='-1' nSunDirX='0' nSunDirY='-10' nSunDirZ='3' bServer='0'>
+  </scene>
+  <scene nRoomType='4' nWidth='2000' nDepth='2000'  nLimitTime='-1' nSunDirX='0' nSunDirY='-10' nSunDirZ='3' bServer='0'>
+  </scene>
+  
+  <scene nRoomType='7' nWidth='1920' nDepth='1920'  nLimitTime='240000' nSunDirX='0' nSunDirY='-10' nSunDirZ='3' bServer='1'>
+    <extend nAddAiInterval='15000' nLimitRemainTime='1000' nLimitArea='10000' nMaxCount='10' nLimitAi='0'></extend>
+    <maps >
+    	<mapid  ID="1" ></mapid>
+    </maps>    
+  </scene>
+  
+  <scene nRoomType='8' nWidth='1920' nDepth='1920'  nLimitTime='300000' nSunDirX='0' nSunDirY='-10' nSunDirZ='3' bServer='1'>
+    <extend nManorWidth="160"></extend>
+    <maps >
+    	<mapid  ID="1" ></mapid>
+    	<mapid  ID="2" ></mapid>
+    	<mapid  ID="3" ></mapid>
+    </maps>        
+    <ais>
+      <!--- 如果没有找到，则使用最后一份ai配置 -->
+      <ai nTeamLevel="0" nID1="1011" nID2="1011" nID3="1011" nID4="1011"></ai>
+    </ais>
+    <colors>
+      <color nID1="1" nID2="3" nID3="7"></color>
+      <color nID1="1" nID2="7" nID3="3"></color>
+      <color nID1="3" nID2="1" nID3="7"></color>
+      <color nID1="3" nID2="7" nID3="1"></color>
+      <color nID1="7" nID2="1" nID3="3"></color>
+      <color nID1="7" nID2="3" nID3="1"></color>
+    </colors>
+    <poses>
+<!--- mapID表示这个出生方案用的哪个地图方案，如果这个ID是一个没有在map配置表中配置的数值，比如99999，则默认全部是初始格子 -->
+      <pos mapID="1" x1="960" y1="1600" x2="320" y2="880" x3="1600" y3="880" ></pos>
+      <pos mapID="2" x1="960" y1="1200" x2="720" y2="720" x3="1216" y3="720" ></pos>
+      <pos mapID="3" x1="960" y1="480" x2="560" y2="1200" x3="1360" y3="1200" ></pos>
+    </poses>
+  </scene>
+  
+  <scene nRoomType='9' nWidth='1920' nDepth='1920'  nLimitTime='240000' nSunDirX='0' nSunDirY='-10' nSunDirZ='3' bServer='1'>
+    <extend nAddAiInterval='15000' nLimitRemainTime='1000' nLimitArea='10000' nMaxCount='10' nLimitAi='0'></extend>
+    <maps >
+    	<mapid  ID="1" ></mapid>
+    </maps>    
+  </scene>
+  
+  <scene nRoomType='10' nWidth='1920' nDepth='1920'  nLimitTime='300000' nSunDirX='0' nSunDirY='-10' nSunDirZ='3' bServer='1'>
+    <extend nManorWidth="160"></extend>
+    <maps >
+    	<mapid  ID="1" ></mapid>
+    	<mapid  ID="2" ></mapid>
+    	<mapid  ID="3" ></mapid>
+    </maps>        
+    <ais>
+      <!--- 如果没有找到，则使用最后一份ai配置 -->
+      <ai nTeamLevel="0" nID1="1011" nID2="1011" nID3="1011" nID4="1011"></ai>
+    </ais>
+    <colors>
+      <color nID1="1" nID2="3" nID3="7"></color>
+      <color nID1="1" nID2="7" nID3="3"></color>
+      <color nID1="3" nID2="1" nID3="7"></color>
+      <color nID1="3" nID2="7" nID3="1"></color>
+      <color nID1="7" nID2="1" nID3="3"></color>
+      <color nID1="7" nID2="3" nID3="1"></color>
+    </colors>
+    <poses>
+<!--- mapID表示这个出生方案用的哪个地图方案，如果这个ID是一个没有在map配置表中配置的数值，比如99999，则默认全部是初始格子 -->
+      <pos mapID="1" x1="960" y1="1600" x2="320" y2="880" x3="1600" y3="880" ></pos>
+      <pos mapID="2" x1="960" y1="1200" x2="720" y2="720" x3="1216" y3="720" ></pos>
+      <pos mapID="3" x1="960" y1="480" x2="560" y2="1200" x3="1360" y3="1200" ></pos>
+    </poses>
+  </scene>
+  
+  <scene nRoomType='13' nWidth='1920' nDepth='1920'  nLimitTime='240000' nSunDirX='0' nSunDirY='-10' nSunDirZ='3' bServer='1'>
+    <extend nAddAiInterval='15000' nLimitRemainTime='1000' nLimitArea='10000' nMaxCount='10' nLimitAi='0'></extend>
+    <maps >
+    	<mapid  ID="1" ></mapid>
+    </maps>    
+  </scene>
+  
+</document>
