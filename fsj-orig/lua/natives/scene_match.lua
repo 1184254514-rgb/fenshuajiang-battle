@@ -164,17 +164,30 @@ local function free_position(sc, p)
         local k = (start + offset) % total
         local x, y = half + 1 + k % cols * stride, half + 1 + math.floor(k / cols) * stride
         local free = true
-        for yy = y - half, y + half do
-            for xx = x - half, x + half do
+        -- Local timed respawns need room to leave the initial manor. An empty
+        -- 5x5 square alone can put the head directly beside a live enemy route.
+        local clearance = half + 2
+        for yy = y - clearance, y + clearance do
+            for xx = x - clearance, x + clearance do
                 local idx = yy * sc.__W + xx
-                if (sc.__owner[idx] or 0) ~= 0 or (sc.__trail[idx] or 0) ~= 0
+                if xx < 0 or yy < 0 or xx >= sc.__W or yy >= sc.__H
+                    or (sc.__owner[idx] or 0) ~= 0 or (sc.__trail[idx] or 0) ~= 0
                     or ((sc.__c_itemFlags and sc.__c_itemFlags[idx] or 0) & 1) ~= 0 then
                     free = false; break
                 end
             end
             if not free then break end
         end
-        if free then return (x + 0.5) * 16, (y + 0.5) * 16 end
+        if free then
+            local px,py=(x+0.5)*16,(y+0.5)*16
+            for _,other in ipairs(sc.__order or {}) do
+                if other~=p and other.__alive and other.__x and other.__y
+                    and (px-other.__x)^2+(py-other.__y)^2 < ((half+8)*16)^2 then
+                    free=false;break
+                end
+            end
+            if free then return px,py end
+        end
     end
 end
 function M.Respawn(sc, p)
@@ -339,7 +352,9 @@ function M.UIState()
     local state = { table.concat({ M.IsFinished(sc) and "finished" or "playing",
         M.GetTimeRemain(sc), rank, #board, string.format("%.2f", mine.percent),
         mine.kills, mine.score, M.RespawnRemaining(sc, director),
-        clean(board[1] and board[1].name), board[1] and board[1].objectID or 0 }, "|") }
+        clean(board[1] and board[1].name), board[1] and board[1].objectID or 0,
+        clean(director and director.__last_death and director.__last_death.reason),
+        clean(director and director.__last_death and director.__last_death.killer) }, "|") }
     for i = 1, math.min(#board, 10) do
         local row = board[i]
         state[#state + 1] = table.concat({ i, row.objectID, clean(row.name), row.area,

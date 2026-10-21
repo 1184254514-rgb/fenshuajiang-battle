@@ -307,6 +307,11 @@ local function kill_player(sc, victim, killer, collide, reason)
 	if not victim.__alive or sc.__match_finished then return false end
 	if SceneSkills and SceneSkills.BeforeDeath(sc, victim, killer, collide, reason or "trail") == false then return false end
 	if SceneScore then SceneScore.BeforeKill(sc, victim) end
+	victim.__last_death = {reason=reason or "territory",killer=killer and killer.__nick or "",time=sc.__time,
+		x=victim.__x,y=victim.__y,trail=#victim.__trail,area=victim.__manor.count}
+	if victim == sc.m_pDirectorObj then
+		print("[MATCH DEATH] reason="..victim.__last_death.reason.." killer="..victim.__last_death.killer.." time="..tostring(sc.__time).." trail="..#victim.__trail.." area="..victim.__manor.count)
+	end
 	victim.__alive = false
 	if SceneSim.a_on_die then SceneSim.a_on_die(sc, victim) end
 	victim.__deaths = victim.__deaths + 1

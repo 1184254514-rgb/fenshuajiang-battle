@@ -1,6 +1,8 @@
 -- Image and text-style natives shared by CGWnd and every derived window class.
 -- GuiImageOps owns the backing arrays and safely ignores missing resources.
 
+local unpack_values = table.unpack -- captured before original Help.lua redefines it for buffers
+
 local function node_of(wnd)
 	return wnd and rawget(wnd, "__node") or nil
 end
@@ -15,7 +17,7 @@ local function host_call(method_name, ...)
 		if api == nil then return nil end
 		local method = api[method_name]
 		if method == nil then return nil end
-		return method(api, table.unpack(args, 1, args.n))
+		return method(api, unpack_values(args, 1, args.n))
 	end)
 	if ok then return result end
 	return nil

@@ -527,6 +527,9 @@ func _default_source(texture: Texture2D) -> Dictionary:
 func _rect(value: Variant, fallback: Dictionary) -> Dictionary:
 	if value == null:
 		return fallback.duplicate(true)
+	if value is LuaTable:
+		return {"left": _number(value.get("left")), "top": _number(value.get("top")),
+			"right": _number(value.get("right")), "bottom": _number(value.get("bottom"))}
 	if value is Dictionary:
 		return {
 			"left": _number(value.get("left", value.get("l", 0.0))),

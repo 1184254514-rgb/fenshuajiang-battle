@@ -137,6 +137,19 @@ local ok, problem = pcall(function()
     M.Tick(again, 1)
     equal(dead.__respawn_calls, 1, "following tick cannot duplicate respawn")
 
+    -- Empty cells are insufficient when an enemy head is beside the spawn.
+    local unsafe = fixture(); M.Configure(unsafe,240000)
+    local reborn=player(unsafe,42,0,0);reborn.__alive=false
+    local near=player(unsafe,1,25,0)
+    -- The old deterministic first candidate for id 42 at time zero.
+    local half,stride=2,7
+    local cols=math.floor((unsafe.__W-2*half-2)/stride)+1
+    local k=(42*17)%(cols*cols)
+    near.__x=(half+1+k%cols*stride+0.5)*16
+    near.__y=(half+1+math.floor(k/cols)*stride+0.5)*16
+    equal(M.Respawn(unsafe,reborn),true,"respawn finds another free position near an enemy")
+    equal((reborn.__x-near.__x)^2+(reborn.__y-near.__y)^2>=160^2,true,"respawn does not overlap or hug a living enemy")
+
     M.InstallHooks()
     again.__aiPlan, again.__aiTimer = {}, 42
     CGameScene.OnAddAiTick(again, 100)

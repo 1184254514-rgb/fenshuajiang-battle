@@ -81,7 +81,7 @@ function L.DropPeer(peer)
     end end
 end
 local fields={"__x","__y","__dir","__alive","__nick","__equipID","__kills","__deaths",
-    "__stats","__rhythm","__b_spt","__trail","__trailRevision","__skillID","__skill_level",
+    "__last_death","__stats","__rhythm","__b_spt","__trail","__trailRevision","__skillID","__skill_level",
     "__skill_effects","__skill_cooldowns","__skill_mods","__skill_extra_speed","__skill_extra_until",
     "__skill_passives","__skill_passive_levels","__killedBy","__net_peer",
     "__skill_cast_serial","__skill_cast_effect","__skill_cast_at","__skill_cast_lifetime"}

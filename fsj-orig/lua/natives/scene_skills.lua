@@ -139,7 +139,9 @@ function S.RefreshModifiers(p)
 		end
 	end
 	p.__skill_mods = mods
-	invalidate_motion(p)
+	-- Unchanged passive modifiers must not restart MoveOn every 100 ms:
+	-- snapping repeatedly traps low-speed/fault movement in one cell.
+	if (previous[8] or 0) ~= (mods[8] or 0) then invalidate_motion(p) end
 end
 function S.InitPlayer(p)
 	load_data()

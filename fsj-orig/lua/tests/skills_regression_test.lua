@@ -163,6 +163,22 @@ local ok,failure=xpcall(function()
 	p.__alive=false;sc.__match_finished=false
 	equal(S.Use(p,1),false,'dead painter cannot cast')
 
+	-- Fault-speed movement must cross cells continuously, including left/up.
+	S.passives={0,0,0}
+	for _,dir in ipairs({1,2,4,8}) do
+	 sc,p=fixture();p.__x,p.__y=88,88;p.__dir=dir;p.__speedup=false
+	 local ox,oy=p.__x,p.__y
+	 for i=1,60 do
+	  sc.__time=i*16
+	  p:RhythmSpeed(3)
+	  S.Tick(sc,16)
+	  SceneSim.step_player(sc,p,16)
+	 end
+	 local travelled=math.abs(p.__x-ox)+math.abs(p.__y-oy)
+	 equal(travelled>65,true,'continuous fault retains slow movement direction '..dir)
+	 equal(p.__alive,true,'leaving own territory does not cause self death direction '..dir)
+	end
+
 	-- GDScript methods are callable userdata through lua-gdextension. A plain
 	-- Lua function mock cannot catch a bridge that incorrectly rejects them.
 	Host=savedHost

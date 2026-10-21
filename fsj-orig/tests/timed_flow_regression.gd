@@ -56,6 +56,12 @@ func _ready() -> void:
 		return
 	lua("math.randomseed(20261021); require 'start_game'")
 	await frames(90)
+	# The release deliberately opens its LAN lobby. Close it through the same
+	# button a single-player user uses before testing the offline lobby clicks.
+	var lan_hud := ui.get_node_or_null("LanHud")
+	if lan_hud != null and bool(lan_hud.get("opened")):
+		click(lan_hud.get("close_button") as Control)
+		await frames(12)
 	var match_hud := ui.get_node_or_null("MatchHud")
 	check(match_hud != null, "timed HUD installed")
 	if match_hud == null:

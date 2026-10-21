@@ -163,6 +163,10 @@ func _render(snapshot: String) -> void:
 	var respawn_ms: int = int(header[7])
 	if mode == "playing" and respawn_ms > 0:
 		_respawn.text = "%d 秒后重生" % int(ceil(float(respawn_ms) / 1000.0))
+		if header.size() > 11:
+			var causes := {"trail": "路线被切断", "body": "撞到护盾", "territory": "领地被占完"}
+			var cause := str(causes.get(header[10], ""))
+			if not cause.is_empty(): _respawn.text += " · " + cause
 		_respawn.show()
 	if mode != "finished":
 		return

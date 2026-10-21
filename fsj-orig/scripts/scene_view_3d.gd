@@ -782,7 +782,7 @@ func set_skill_cast(id: int, serial: int, effect_path: String, age_ms: int, life
 	if serial <= int(actor.get("cast_serial", 0)):
 		return false
 	actor["cast_serial"] = serial
-	var old := actor.get("cast_fx") as Node3D
+	var old = actor.get("cast_fx")
 	if is_instance_valid(old): old.queue_free()
 	actor["cast_fx"] = null
 	if not bool(actor.get("alive", false)) or effect_path in ["", "0"]:

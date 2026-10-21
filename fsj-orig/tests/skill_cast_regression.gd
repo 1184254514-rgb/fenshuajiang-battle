@@ -39,6 +39,7 @@ func _ready() -> void:
 	check(not (view.actors[2]["cast_fx"] as Node3D).is_visible_in_tree(), "cast does not reveal a hidden enemy")
 	for i in 80: await get_tree().process_frame
 	check(not is_instance_valid(effect), "finished one-shot releases its node")
+	check(view.set_skill_cast(1, 101, "fx/cfg/jineng_jiasu.eft", 0, 4000), "recasting after old effect freed is safe")
 	view.end_scene()
 	check(view.actors.is_empty(), "scene cleanup releases cast owners")
 	if failures.is_empty(): print("SKILL CAST PASSED: ", checks, " checks")
