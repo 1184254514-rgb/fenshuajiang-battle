@@ -72,8 +72,8 @@ local ok, failure = xpcall(function()
 	local replacement=assert(sc:AddPlayer(12,{},CVector2f:new(24,24),16))
 	equal(replacement.__manor.colorID,freed,'new identity reuses departed colour')
 
-	-- Closing a loop over a foreign live route must not leave an alive
-	-- opponent whose path points at cells which the capture just erased.
+	-- Closing a distant loop must preserve foreign live routes. Territory
+	-- changes underneath them; only actual contact cuts the line.
 	sc=scene()
 	local captor=assert(sc:AddPlayer(1,{},CVector2f:new(24,24),16))
 	local victim=assert(sc:AddPlayer(2,{},CVector2f:new(160,160),16))
@@ -89,11 +89,15 @@ local ok, failure = xpcall(function()
 	sc.__trail[enemyLine]=2;victim.__trail={enemyLine}
 	sc.__owner[9*12+9]=victim.__manor.manorID;victim.__manor.count=1
 	SceneSim.enter_node(sc,captor,3,2)
-	equal(victim.__alive,false,'captured opponent route counts as a cut')
-	equal(#victim.__trail,0,'captured victim keeps no stale route')
-	equal(sc.__trail[enemyLine],0,'captured route grid is cleared')
+	equal(victim.__alive,true,'enclosing a distant route does not remotely kill its owner')
+	equal(#victim.__trail,1,'enclosed live route keeps its chronological path')
+	equal(sc.__trail[enemyLine],2,'enclosed route grid remains visible and collidable')
 	equal(sc.__owner[enemyLine],captor.__manor.manorID,'captured interior belongs to captor')
-	equal(captor.__kills,1,'one covered route awards one kill')
+	equal(captor.__kills,0,'enclosure does not award an unearned contact kill')
+	SceneSim.enter_node(sc,captor,4,4)
+	equal(victim.__alive,false,'actual contact with the enclosed live route still kills')
+	equal(sc.__trail[enemyLine],0,'actual cut removes the route')
+	equal(captor.__kills,1,'actual contact awards exactly one kill')
 end, debug.traceback)
 Host=savedHost
 assert(ok,failure)

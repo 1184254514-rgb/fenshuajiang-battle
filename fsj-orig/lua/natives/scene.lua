@@ -388,23 +388,11 @@ local function close_loop(sc, p)
 		if y > 0 then push(x, y - 1) end
 		if y < H - 1 then push(x, y + 1) end
 	end
-	-- Capturing a region can cut an opponent's live route just as stepping on
-	-- that route does. Resolve those cuts before overwriting cells, so the
-	-- opponent cannot keep a chronological path containing missing line units.
-	local cut_players = {}
-	for idx = 0, W * H - 1 do
-		local id = sc.__trail[idx]
-		if not outside[idx] and id ~= 0 and id ~= p.__objectID then
-			cut_players[id] = true
-		end
-	end
-	local cut_order = {}
-	for id in pairs(cut_players) do cut_order[#cut_order + 1] = id end
-	table.sort(cut_order)
-	for _, id in ipairs(cut_order) do
-		local victim = sc.__players[id]
-		if victim and victim.__alive then kill_player(sc, victim, p, true, "trail") end
-	end
+	-- Territory ownership and live trails are separate layers. Merely enclosing
+	-- a distant line must not kill its owner or erase the path behind its head.
+	-- Actual head/line contact is resolved by enter_node; full loss of territory
+	-- is resolved after applying the capture below. This is the local rule fix
+	-- for deaths with no opponent touching the line.
 	local bx0, by0, bx1, by1 = 0, 0, W - 1, H - 1
 	-- CManorLine::GetValuation (0x33dd4c): the enclosed area takes the most frequent judged grade 0..3 of the closing
 	-- line, cells still at InitLineRhythmID not counted; ties favour the better (lower) grade
@@ -426,8 +414,9 @@ local function close_loop(sc, p)
 					local victim = sc.__byManor[prev]
 					if victim then victim.__manor.count = victim.__manor.count - 1 end
 				end
-				set_val(sc, idx, lineVal)
-				set_cell(sc, idx, mid, 0)
+				local foreignTrail=(sc.__trail[idx] or 0)~=0 and sc.__trail[idx]~=p.__objectID
+				if not foreignTrail then set_val(sc, idx, lineVal) end
+				set_cell(sc, idx, mid, foreignTrail and sc.__trail[idx] or 0)
 				gained = gained + 1
 			end
 		end
@@ -458,7 +447,7 @@ local function close_loop(sc, p)
 	end
 	-- players that lost everything die
 	for _, o in ipairs(sc.__order) do
-		if o ~= p and o.__alive and o.__manor.count <= 0 then kill_player(sc, o, p, false) end
+		if o ~= p and o.__alive and o.__manor.count <= 0 then kill_player(sc, o, p, false,"territory") end
 	end
 end
 
