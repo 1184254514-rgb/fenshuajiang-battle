@@ -113,11 +113,14 @@ end
 function M.Configure(sc, duration_ms)
     assert(sc and sc.__roomType == 0, "Timed competition requires the local room-0 world")
     sc.__timed_match = true
+    if ScenePlanner then ScenePlanner.Configure(sc) end
+    if not duration_ms or duration_ms==M.DEFAULT_DURATION_MS then duration_ms=ScenePlanner and ScenePlanner.settings.duration_ms or duration_ms end
     sc.__limit = math.max(1, math.floor(number(duration_ms, M.DEFAULT_DURATION_MS)))
     sc.__match_started_at = current_time(sc)
     sc.__match_finished, sc.__match_results = false, nil
     sc.__match_respawns, sc.__match_roster_ready = {}, false
     sc.__match_seed_attempts = 0
+    if SceneProgression then SceneProgression.Configure(sc) end
     stop_endless_checks(sc)
     hide_old_results(sc)
     show_original_clock(true)
@@ -134,7 +137,7 @@ function M.Start(duration_ms)
 end
 function M.Rematch()
     local sc = scene()
-    local duration = sc and sc.__limit or M.DEFAULT_DURATION_MS
+    local duration = ScenePlanner and ScenePlanner.settings.duration_ms or (sc and sc.__limit or M.DEFAULT_DURATION_MS)
     return M.Start(duration)
 end
 function M.ReturnHome()
@@ -211,6 +214,7 @@ function M.Respawn(sc, p)
         invoke(sc, "InsertObject", p, CPos16:new(x, y))
     end
     p.__c_inScene = true
+    if SceneProgression then SceneProgression.OnRespawn(p) end
     p:StartUp(p.__equipID or 0)
     if p == sc.m_pDirectorObj and g_App then
         invoke(g_App, "SetDirector", p)
@@ -225,7 +229,7 @@ function M.Respawn(sc, p)
 end
 function M.OnPlayerDeath(sc, victim, _killer)
     if not M.IsTimed(sc) or M.IsFinished(sc) or not victim then return end
-    sc.__match_respawns[victim.__objectID] = current_time(sc) + M.RESPAWN_MS
+    sc.__match_respawns[victim.__objectID] = current_time(sc) + (sc.__planner_cfg and sc.__planner_cfg.respawn_ms or M.RESPAWN_MS)
 end
 function M.RespawnRemaining(sc, p)
     if not M.IsTimed(sc) or not p or p.__alive or M.IsFinished(sc) then return 0 end
@@ -283,10 +287,12 @@ function M.Tick(sc, _dt)
         if bots >= target or sc.__match_seed_attempts >= 10 then sc.__match_roster_ready = true end
     end
     for _, p in ipairs(sc.__order or {}) do
-        if not p.__alive then
+        if p.__ai and sc.__planner_pause_ai then
+            -- Planner pause also suspends AI respawns; resume keeps their due time.
+        elseif not p.__alive then
             local due = sc.__match_respawns[p.__objectID]
             if not due then
-                sc.__match_respawns[p.__objectID] = current_time(sc) + M.RESPAWN_MS
+                sc.__match_respawns[p.__objectID] = current_time(sc) + (sc.__planner_cfg and sc.__planner_cfg.respawn_ms or M.RESPAWN_MS)
             elseif current_time(sc) >= due and not M.Respawn(sc, p) then
                 sc.__match_respawns[p.__objectID] = current_time(sc) + 500
             end

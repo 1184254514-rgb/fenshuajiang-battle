@@ -20,3 +20,7 @@ try("natives/scene_skills")
 try("natives/scene_match")
 
 try("natives/scene_battle_hud")
+
+try("natives/scene_progression")
+
+try("natives/scene_planner")

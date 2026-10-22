@@ -105,6 +105,39 @@ func _ready() -> void:
 	lua("__timed_clock_before=g_App.__scene.__time")
 	await frames(60)
 	check(lua("return math.abs(g_App.__scene.__time-__timed_clock_before-1000) <= 1") == true, "four-minute clock preserves fractional frame milliseconds")
+	# The real pickup handler must consume a crystal once and increase both
+	# level properties and the actual skill row, not only its label.
+	check(lua("return g_App.__scene.__c_expLive>0") == true,"timed round spawns experience crystals")
+	lua("""
+		local p=g_App:GetDirector();local sc=g_App.__scene
+		SceneItemsC.SetExp(p,199)
+		__xp_item=SceneItemsC.CreatExpUnit(sc,sc:AllocObjectID(false),{x=p.__x,y=p.__y})
+		__xp_item:SetState(2)
+		SceneItemsC.CheckItem(p,{left=p.__x,top=p.__y,right=p.__x+1,bottom=p.__y+1})
+	""")
+	check(lua("return g_App:GetDirector():GetSimple32Property(eSPT32_Exp)>=299") == true,"crystal pickup credits experience")
+	check(lua("local p=g_App:GetDirector();local before=p.__progress_exp;__xp_item:OnCircle(nil,p);return p.__progress_exp==before") == true,"removed crystal cannot grant duplicate XP")
+	check(lua("return __xp_item.__c_removeReason=='pickup'") == true,"picked crystal is removed exactly once")
+	check(lua("return g_App:GetDirector():GetSimple32Property(eSPT32_Level)") == 2,"200 XP boundary raises character to level two")
+	check(lua("return g_App:GetDirector().__skill_level") == 2,"active skill follows original match-level map")
+	check(lua("return g_App:GetDirector().__skill_passive_levels[1]") == 1,"passive retains original slower level map")
+	lua("SceneItemsC.SetExp(g_App:GetDirector(),600)")
+	await frames(2)
+	check(lua("return g_App:GetDirector().__skill_passive_levels[1]") == 2,"passive upgrades at its own threshold")
+	check(lua("return g_App:GetGameMain().m_wndExpProgress:IsShow()") == true,"original XP progress control is visible")
+	check(lua("return g_App:GetGameMain().m_wndExpProgress:GetWndText()") == "3","original XP control displays actual character level")
+	lua("SceneItemsC.SetExp(g_App:GetDirector(),9000)")
+	await frames(2)
+	check(lua("return g_App:GetDirector().__skill_level==6 and g_App:GetDirector().__skill_passive_levels[1]==6") == true,"maximum XP activates original level-six rows")
+	check(lua("return g_App:GetGameMain().m_pGameButton:GetDlgChild('B_jineng.dengji'):GetWndText()==g_App:GetString('levelmax')") == true,"original skill label displays MAX")
+	await screenshot("upgraded")
+	check(lua("return (g_App:GetDirector().__skill_mods or {})[19]") == 6000,"level-six killer passive applies original 6000 modifier")
+	lua("local p=g_App:GetDirector();p.__skillID=1;SceneProgression.Refresh(p);__upgrade_base=p:GetAddSpeed();SceneSkills.Use(p,1)")
+	check(lua("return g_App:GetDirector().__skill_extra_speed") == 1800,"upgraded dash uses original level-six effect strength")
+	lua("g_App:GetDirector().__skillID=2;SceneItemsC.SetExp(g_App:GetDirector(),0)")
+	await frames(8)
+	check(lua("return (g_App:GetDirector().__skill_mods or {})[19]") == 1000,"new match-level one passive restores base modifier")
+	check(lua("local c=CPlayerLevelConfig:Inst();return c:GetLevel(199)==1 and c:GetLevel(200)==2 and c:GetLevel(599)==2 and c:GetLevel(600)==3 and c:GetLevel(9000)==10 and c:GetLevel(999999)==10") == true,"XP thresholds are inclusive and clamp at ten")
 	# Lay an open route in empty edge cells without closing any region.
 	lua("""
 		local sc=g_App.__scene; local d=g_App:GetDirector()
@@ -135,7 +168,7 @@ func _ready() -> void:
 		__timed_id=d.__objectID; __timed_colour=d.__manor.colorID
 		__timed_before_count=#sc.__order
 		SceneScore.SetProperty(d,SceneScore.SPT.KILLS,7,false); d.__stats.killCount=7; d.__kills=7
-		SceneSim.kill_player(sc,d,nil,false)
+		SceneItemsC.SetExp(d,600);SceneSim.kill_player(sc,d,nil,false)
 	""")
 	check(lua("return not g_App:GetDirector().__alive") == true, "director can be eliminated")
 	check(lua("return not SceneMatch.IsFinished(g_App.__scene)") == true, "death does not finish timed match")
@@ -146,11 +179,14 @@ func _ready() -> void:
 	check(lua("return g_App:GetDirector().__objectID == __timed_id and g_App:GetDirector().__manor.colorID == __timed_colour") == true, "respawn preserves identity and colour")
 	check(lua("return #g_App.__scene.__order == __timed_before_count") == true, "respawn does not duplicate roster")
 	check(lua("return g_App:GetDirector().__kills == 7 and g_App:GetDirector().__stats.killCount == 7") == true, "respawn preserves kill history")
+	check(lua("return g_App:GetDirector().__progress_exp>=600 and g_App:GetDirector().__skill_level==2 and g_App:GetDirector().__skill_passive_levels[1]==2") == true,"low-level respawn keeps XP and recomputes skills")
+	check(lua("local p=g_App:GetDirector();SceneItemsC.SetExp(p,9000);SceneProgression.OnRespawn(p);return p.__progress_exp==4500 and p.__progress_level==7 and p.__skill_level==5") == true,"higher-level rebirth follows original XP ratio")
 	check(lua("return g_App:GetDirector().__c_inScene") == true, "respawn restores native scene membership")
 	# Shorten only this test's remaining duration, then cross the deadline.
 	lua("local sc=g_App.__scene; sc.__limit=sc.__time-sc.__match_started_at+1")
 	await frames(2)
 	check(lua("return SceneMatch.IsFinished(g_App.__scene)") == true, "exact timeout finishes match")
+	check(lua("return SceneProgression.SetExp(g_App:GetDirector(),999999)") == false,"finished match rejects further XP grants")
 	check(lua("return g_App.__scene:GetTimeRemain()") == 0, "countdown clamps to zero")
 	await frames(10)
 	check(match_hud.get("_finish_layer").visible, "final standings are visible")

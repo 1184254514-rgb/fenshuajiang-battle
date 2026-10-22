@@ -14,6 +14,7 @@ var input_sent := false
 var peer_id := 0
 var shot_prefix := ""
 var shot_taken := false
+var saw_upgrade := false
 
 func check(ok: bool, text: String) -> void:
 	checks += 1
@@ -80,7 +81,7 @@ func host_step(now: int) -> void:
 		check(session.start_match(), "host starts shared match")
 		check(lua("return #g_App.__scene.__order") == 10, "fixed ten competitors")
 		check(lua("local n=0;for _,p in ipairs(g_App.__scene.__order) do if p.__net_peer then n=n+1 end end;return n") == 2, "two humans replace two AI slots")
-		lua("local sc=g_App.__scene; local p=sc.__order[2]; for x=2,6 do SceneSim.enter_node(sc,p,x,1) end; __lan_test_area=p.__manor.count")
+		lua("local sc=g_App.__scene; local p=sc.__order[2]; SceneItemsC.SetExp(p,600); for x=2,6 do SceneSim.enter_node(sc,p,x,1) end; __lan_test_area=p.__manor.count")
 		stage = 1
 		stage_time = now
 	elif stage == 1 and now - stage_time > 1800:
@@ -94,6 +95,7 @@ func host_step(now: int) -> void:
 		stage_time = now
 	elif stage == 2 and now - stage_time > 3400:
 		check(lua("return g_App.__scene.__order[2].__alive") == true, "remote player respawns on host")
+		check(lua("return g_App.__scene.__order[2].__progress_exp>=600 and g_App.__scene.__order[2].__skill_level>=2") == true,"host respawn retains earned XP and skill progression")
 		check(lua("return g_App.__scene.__order[2].__ai==nil and g_App.__scene.__order[2].__skillID==2") == true, "remote identity and loadout survive respawn")
 		lua("local sc=g_App.__scene;sc.__limit=sc.__time+1")
 		stage = 3
@@ -120,6 +122,11 @@ func host_step(now: int) -> void:
 		stage = 6
 		stage_time = now
 	elif stage == 6 and now - stage_time > 1000:
+		check(lua("local ok=ScenePlanner.Action('restart');return ok")==true,"host planner restarts active LAN match")
+		stage=61
+		stage_time=now
+	elif stage==61 and session.round_id==4 and session.phase=="playing" and now-stage_time>600:
+		check(lua("return g_App.__scene.__planner_cfg.duration_ms")==240000,"planner LAN restart keeps authoritative settings")
 		session.leave_room()
 		check(session.phase == "idle", "room shutdown cleans server")
 		check(host._tick_errors == 0, "host has no Lua runtime errors")
@@ -150,6 +157,19 @@ func client_step(now: int) -> void:
 			check(lua("return g_App:GetGameMain().m_pGameButton.m_pBtnSkill.__hud_skill") == 2,"guest APK button uses its own authoritative loadout")
 			if cast != null: click(cast)
 			cast_sent = true
+		if not saw_upgrade and now-stage_time>600:
+			check(lua("return g_App:GetDirector().__progress_exp>=600 and g_App:GetDirector().__progress_level>=3") == true,"host XP and character level replicate to guest")
+			check(lua("return g_App:GetDirector().__skill_level>=2 and g_App:GetDirector().__skill_passive_levels[1]>=2") == true,"active and passive upgrade levels replicate to guest")
+			check(lua("return g_App:GetGameMain().m_wndExpProgress:IsShow()") == true,"guest sees original XP control")
+			check(lua("return SceneProgression.SetExp(g_App:GetDirector(),9000)") == false,"guest cannot grant its own experience")
+			check(lua("local ok=ScenePlanner.ApplyJSON(ScenePlanner.ConfigJSON());return ok")==false,"guest cannot save planner settings")
+			check(lua("local ok=ScenePlanner.Action('max_xp');return ok")==false,"guest cannot execute planner debug actions")
+			var planner=get_child(0).get_node("PlannerHud")
+			planner.layer.show()
+			planner._refresh(true)
+			check(planner.layer.visible and planner.save_button.disabled,"guest planner opens read-only")
+			planner.layer.hide()
+			saw_upgrade=true
 		var alive = lua("return g_App:GetDirector().__alive")
 		if alive == false: saw_dead = true
 		elif saw_dead: saw_alive_again = true

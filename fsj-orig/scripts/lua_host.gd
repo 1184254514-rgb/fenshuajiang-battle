@@ -72,11 +72,20 @@ class LuaApi extends RefCounted:
 			host.scene_view.music_row = pick.get("row", {})
 			host.scene_view.start_music(String(pick["m"]), String(pick["r"]))
 	func parse_json(text: String):
-		return JSON.parse_string(text)
+		var parser=JSON.new()
+		if parser.parse(text)!=OK: return null
+		return parser.data
 	func lan_input(direction: int, skill: bool, grade: int = -1) -> void:
 		if is_instance_valid(host.lan_session): host.lan_session.send_input(direction, skill, grade)
 	func lan_action(action: String) -> void:
 		if is_instance_valid(host.lan_session): host.lan_session.game_action(action)
+	func planner_restart() -> bool:
+		if not is_instance_valid(host.lan_session) or host.lan_session.role != "host": return false
+		host.lan_session.game_action("leave")
+		host.lan_session.call_deferred("start_match")
+		return true
+	func planner_is_client() -> bool:
+		return is_instance_valid(host.lan_session) and host.lan_session.role == "client"
 	func time_ms() -> int:
 		return Time.get_ticks_msec()
 	func unix_ms() -> int:
@@ -127,7 +136,7 @@ func start(ui_root: Control) -> bool:
 	lan_session.name = "LanSession"
 	lan_session.host = self
 	add_child(lan_session)
-	for overlay_path in ["res://scripts/skill_hud.gd", "res://scripts/match_hud.gd", "res://scripts/lan_hud.gd"]:
+	for overlay_path in ["res://scripts/skill_hud.gd", "res://scripts/match_hud.gd", "res://scripts/lan_hud.gd", "res://scripts/planner_hud.gd"]:
 		if ResourceLoader.exists(overlay_path):
 			var overlay_script = load(overlay_path)
 			if overlay_script == null:

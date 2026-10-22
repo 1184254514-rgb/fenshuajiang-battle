@@ -10,7 +10,7 @@
 
 当前可编辑工程已直接纳入仓库的 [`fsj-orig/`](fsj-orig/) 目录。后续复刻改动会连同源码、测试与差异记录一起同步，不再只上传页面说明。
 
-当前 `v0.5.0-native-settlement` 继续用原包资源恢复结算的本局排名、个人战绩和节奏统计，接入真实本局数据与联机重开。保留上一版原局内计时和技能栏、4分钟及现有玩法。详见 [核对记录](fsj-orig/docs/APK差异核对-2026-10-21.md)、[结算截图](fsj-orig/docs/images/settlement-ranking-v0.5.png) 和 [局内截图](fsj-orig/docs/images/battle-hud-v0.4.png)。
+当前 `v0.6.0-planner` 接通局内经验与主动/被动升级，并加入 Godot 右侧“策划设置”停靠栏及客户端隐藏 F8 面板。默认保留4分钟与原局内/结算布局。详见 [策划工具说明](fsj-orig/docs/策划设置使用说明.md)、[升级核对记录](fsj-orig/docs/APK差异核对-2026-10-21.md) 和 [面板截图](fsj-orig/docs/images/planner-console-v0.6.png)。
 
 ## 下载完整工程与游戏
 

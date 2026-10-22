@@ -211,7 +211,7 @@ func start_match() -> bool:
 		status = "启动比赛失败，请返回大厅重试"
 		return false
 	phase = "playing"
-	status = "比赛中 · 4 分钟"
+	status = "比赛中 · %d 秒" % roundi(float(host.lua.do_string("return SceneMatch.GetTimeRemain(g_App.__scene)")) / 1000.0)
 	for member in members:
 		if int(member.peer) != 1: _send(int(member.peer), {"type": "start", "round": round_id})
 	_send_left = 0.0

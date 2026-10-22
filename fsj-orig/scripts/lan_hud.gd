@@ -103,7 +103,7 @@ func _ready() -> void:
 	host_button.name = "CreateLanRoomButton"
 	join_button = button(panel, "加入房间", Vector2(464, 143), Vector2(244, 46), func(): session.join_room(nick.text, ip.text))
 	join_button.name = "JoinLanRoomButton"
-	description = label(panel, "同一 Wi-Fi 或有线局域网 · 无需密码\n最多 10 人，空位由 AI 补齐，每局 4 分钟", Vector2(30, 203), Vector2(678, 58), 19)
+	description = label(panel, "同一 Wi-Fi 或有线局域网 · 无需密码\n最多 10 人，空位由 AI 补齐，默认 4 分钟", Vector2(30, 203), Vector2(678, 58), 19)
 	roster = label(panel, "先在大厅底部「技能」中配置技能，再创建或加入房间。", Vector2(30, 273), Vector2(678, 141), 20)
 	roster.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	roster.vertical_alignment = VERTICAL_ALIGNMENT_TOP
@@ -134,13 +134,13 @@ func _process(delta: float) -> void:
 	leave_button.visible = connected
 	status_label.text = session.status
 	if connected:
-		description.text = "房主 IP：%s\nUDP 27866 · 同一局域网 · 每局 4 分钟" % session.address
+		description.text = "房主 IP：%s\nUDP 27866 · 同一局域网 · 默认 4 分钟，时长由房主设置" % session.address
 		var names := PackedStringArray()
 		for member in session.members:
 			names.append(str(member.nick) + ("（房主）" if int(member.peer) == 1 else ""))
 		roster.text = "房间成员 %d/10：\n%s\n\n空余的 %d 个位置由 AI 补齐。" % [names.size(), "、".join(names), 10 - names.size()]
 	else:
-		description.text = "同一 Wi-Fi 或有线局域网 · 无需密码\n最多 10 人，空位由 AI 补齐，每局 4 分钟"
+		description.text = "同一 Wi-Fi 或有线局域网 · 无需密码\n最多 10 人，空位由 AI 补齐，默认 4 分钟"
 		roster.text = "先在大厅底部「技能」中配置技能，再创建或加入房间。"
 	var replay := get_parent().find_child("RematchButton", true, false)
 	if replay != null:

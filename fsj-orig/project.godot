@@ -22,7 +22,7 @@ textures/canvas_textures/default_texture_filter=1
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/lan_export/plugin.cfg")
+enabled=PackedStringArray("res://addons/lan_export/plugin.cfg", "res://addons/planner_tools/plugin.cfg")
 
 [lua_gdextension]
 

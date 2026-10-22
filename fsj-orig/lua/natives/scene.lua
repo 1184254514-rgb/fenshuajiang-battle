@@ -582,7 +582,7 @@ function CGameScene:Update(dtMs)
 		if self.__beatIdx >= n and now < view:beat_at(0) then self.__beatIdx = 0 end   -- looped song
 		if fired then
 			for _, p in ipairs(self.__order) do
-				if p.__ai and p.__alive then
+				if p.__ai and p.__alive and not self.__planner_pause_ai then
 					-- CAIBase::OnRhythm (0x3309e4): grade = round(GaussRand(mean, sigma)) from ai.txt RhythmGaussian,
 					-- redrawn until 0..3; then speed (non-fault -> HighSpeed) and line valuation like a player's click
 					local cfg = p.__aiCfg or {}
@@ -601,8 +601,10 @@ function CGameScene:Update(dtMs)
 		end
 	end
 	for _, p in ipairs(self.__order) do
-		if p.__ai then p.__ai(p, dtMs) end
-		SceneSim.step_player(self, p, dtMs)
+		if not (p.__ai and self.__planner_pause_ai) then
+			if p.__ai then p.__ai(p, dtMs) end
+			SceneSim.step_player(self, p, dtMs)
+		end
 	end
 	-- The shield's original description permits head contact kills. Plain
 	-- unshielded bodies do not acquire a new collision rule here.

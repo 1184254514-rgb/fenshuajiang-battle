@@ -40,6 +40,28 @@ function H.Sync()
  local b=gm and gm.m_pGameButton
  if not b or not b.m_pBtnSkill or not gm.m_pWndGameTime then return end
  local p=sc.m_pDirectorObj
+ if p and SceneProgression then
+  local xp=p.__progress_exp or 0;local r=SceneProgression.Row(xp)
+  local serial=p.__progress_serial or 0
+  if gm.__xp_actor~=p or (sc.__match_finished and gm.__xp_effect_until) then
+   gm.__xp_actor=p;gm.__xp_serial=serial;gm.__xp_effect_until=nil
+   gm.m_wndLevelUp:RemoveAllEffects();gm.m_wndLevelUp:ShowWnd(false)
+  end
+  if serial>(gm.__xp_serial or 0) then
+   gm.__xp_serial=serial
+   gm.__xp_effect_until=(sc.__time or 0)+1000
+   gm.m_wndLevelUp:RemoveAllEffects()
+   gm.m_wndLevelUp:ShowWnd(true)
+   gm.m_wndLevelUp:AddEffect('fx/cfg/shengji.eft','fx/loop','locallevelup',1000)
+  end
+  if gm.__xp_effect_until and (sc.__time or 0)>=gm.__xp_effect_until then
+   gm.m_wndLevelUp:ShowWnd(false);gm.__xp_effect_until=nil
+  end
+  gm.m_wndExpProgress:ShowWnd(not sc.__match_finished)
+  gm.m_wndExpProgress:SetWndText(tostring(r.level))
+  gm.m_wndExpProgress:SetRange(math.max(1,r.curExp))
+  gm.m_wndExpProgress:SetPos(r.curExp==0 and 1 or math.min(r.curExp,xp-r.wholeExp))
+ end
  -- APK CGameMain::Start 0x38ba34 hides +0x54 (shengyushijian) and
  -- uses CStringConfig['daojishi'] for the timed clock title.
  gm:GetDlgChild('shengyushijian'):ShowWnd(false)
@@ -85,7 +107,7 @@ function H.Sync()
  local cooldown=p:GetSkillWaitTime(id)
  button:EnableWnd(p.__alive and cooldown<=0)
  button:SetWndText(cooldown>0 and tostring(math.ceil(cooldown/1000)) or '')
- b:GetDlgChild('B_jineng.dengji'):SetWndText(p.__skill_level or 1)
+ b:GetDlgChild('B_jineng.dengji'):SetWndText((p.__skill_level or 1)>=6 and g_App:GetString('levelmax') or (p.__skill_level or 1))
  b:GetDlgChild('jineng'):ShowWnd(true)
  for i=1,3 do
   local slot=b.m_tblWndPassive[i]
@@ -94,7 +116,8 @@ function H.Sync()
    slot:ShowWnd(pid~=0)
    if pid~=0 then
     if slot.__hud_skill~=pid then slot.__hud_skill=pid;image(slot,rows[pid]) end
-    slot:GetDlgChild('dengji'):SetWndText((p.__skill_passive_levels or {})[i] or 1)
+    local lv=(p.__skill_passive_levels or {})[i] or 1
+    slot:GetDlgChild('dengji'):SetWndText(lv>=6 and g_App:GetString('levelmax') or lv)
    end
   end
  end

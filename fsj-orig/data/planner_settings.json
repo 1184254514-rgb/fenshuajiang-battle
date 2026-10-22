@@ -1,0 +1,8 @@
+{
+  "duration_ms": 240000,
+  "respawn_ms": 3000,
+  "exp_count": 60,
+  "exp_reward": 100,
+  "start_exp": 0,
+  "cooldown_percent": 100
+}

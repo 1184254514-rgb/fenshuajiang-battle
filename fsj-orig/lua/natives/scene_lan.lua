@@ -81,14 +81,14 @@ function L.DropPeer(peer)
     end end
 end
 local fields={"__x","__y","__dir","__alive","__nick","__equipID","__kills","__deaths",
-    "__last_death","__stats","__rhythm","__b_spt","__trail","__trailRevision","__skillID","__skill_level",
+    "__progress_exp","__progress_level","__progress_serial","__last_death","__stats","__rhythm","__b_spt","__trail","__trailRevision","__skillID","__skill_level",
     "__skill_effects","__skill_cooldowns","__skill_mods","__skill_extra_speed","__skill_extra_until",
     "__skill_passives","__skill_passive_levels","__killedBy","__net_peer",
     "__skill_cast_serial","__skill_cast_effect","__skill_cast_at","__skill_cast_lifetime"}
 function L.Snapshot()
     local sc=scene()
     if not sc or not sc.__lan_host then return "{}" end
-    local data={time=sc.__time,limit=sc.__limit,finished=sc.__match_finished,
+    local data={planner_paused=sc.__planner_pause_ai,planner=sc.__planner_cfg,time=sc.__time,limit=sc.__limit,finished=sc.__match_finished,
         w=sc.__W,h=sc.__H,players={},runs={},respawns=sc.__match_respawns,items={},
         results=sc.__match_finished and SceneMatch.Results(sc) or nil}
     for _,p in ipairs(sc.__order) do
@@ -124,6 +124,8 @@ function L.Apply(text,peer)
     local sc=scene()
     if not sc or not sc.__lan_client or data.w~=sc.__W or data.h~=sc.__H then return false end
     sc.__time,sc.__limit=data.time,data.limit
+    sc.__planner_cfg=data.planner or sc.__planner_cfg
+    sc.__planner_pause_ai=data.planner_paused==true
     sc.__match_respawns=data.respawns or {}
     local director
     local retracted={}

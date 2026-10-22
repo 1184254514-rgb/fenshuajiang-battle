@@ -1399,7 +1399,7 @@ end
 
 function C.RefillExp(sc, initial)
 	if not ensure_scene(sc)
-		or not C.ENABLE_UNVERIFIED_LOCAL_EXP_REFILL
+		or not (C.ENABLE_UNVERIFIED_LOCAL_EXP_REFILL or sc.__c_localExp)
 		or not sc.__c_expEnabled or sc.__c_destroying then return 0 end
 
 	local made = 0
@@ -1420,7 +1420,7 @@ end
 
 function C.SeedExp(sc)
 	if not ensure_scene(sc)
-		or not C.ENABLE_UNVERIFIED_LOCAL_EXP_REFILL
+		or not (C.ENABLE_UNVERIFIED_LOCAL_EXP_REFILL or sc.__c_localExp)
 		or sc.__c_expSeeded then return end
 	sc.__c_expSeeded = true
 	C.RefillExp(sc, true)
@@ -1455,7 +1455,7 @@ function C.Tick(sc, dtMs)
 		end
 	end
 
-	if C.ENABLE_UNVERIFIED_LOCAL_EXP_REFILL and sc.__c_expSeeded then
+	if (C.ENABLE_UNVERIFIED_LOCAL_EXP_REFILL or sc.__c_localExp) and sc.__c_expSeeded then
 		C.RefillExp(sc, false)
 	end
 end

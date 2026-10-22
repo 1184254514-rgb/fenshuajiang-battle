@@ -208,7 +208,8 @@ function S.Use(p,id,level)
 	if (p.__skill_cooldowns[id] or 0)>now then return false,"技能冷却中" end
 	local cooldown=tonumber(row.nCD) or 0
 	local cdModifier=signed(p:GetSimple32Property(14))
-	p.__skill_cooldowns[id]=now+math.max(0,cooldown+trunc(cooldown*cdModifier/10000))
+	local factor=p.__scene.__planner_cfg and p.__scene.__planner_cfg.cooldown_percent or 100
+	p.__skill_cooldowns[id]=now+math.floor(math.max(0,cooldown+trunc(cooldown*cdModifier/10000))*factor/100)
 	p.__skillID,p.__skill_level=id,level
 	p.__skill_last_name,p.__skill_last_cast=skill_name(id),now
 	-- APK CPlayerClient::OnUseSkill (0x394a50) uses szEffect + "fx/cast",
@@ -289,7 +290,7 @@ function S.Tick(sc,dt)
 			if changed or (p.__skill_refresh_at or 0)<=time(p) then
 				S.RefreshModifiers(p);p.__skill_refresh_at=time(p)+100
 			end
-			if p.__ai and not sc.__match_finished and time(p)>2000 and #(p.__trail or {})>=2 then S.Use(p,p.__skillID,p.__skill_level) end
+			if p.__ai and not sc.__planner_pause_ai and not sc.__match_finished and time(p)>2000 and #(p.__trail or {})>=2 then S.Use(p,p.__skillID,p.__skill_level) end
 			local view=Host and Host.scene_view
 			if view then
 				local ok,method=pcall(function() return view.set_player_skill_state end)
