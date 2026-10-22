@@ -18,3 +18,5 @@ try("natives/gamemain")
 try("natives/rhythm_wnd")
 try("natives/scene_skills")
 try("natives/scene_match")
+
+try("natives/scene_battle_hud")

@@ -5,14 +5,9 @@ extends Control
 var host: LuaHost
 var _menu_layer: ColorRect
 var _home: Panel
-var _game: Panel
 var _active: OptionButton
 var _passives: Array[OptionButton] = []
 var _description: Label
-var _cast: Button
-var _status: Label
-var _duration: Label
-var _icon: TextureRect
 var _active_ids: Array[int] = []
 var _passive_ids: Array[int] = []
 var _catalog: Dictionary = {}
@@ -64,31 +59,7 @@ func _ready() -> void:
 		option.name = "PassiveSkillSelector%d" % (slot + 1)
 		option.item_selected.connect(func(index: int): _on_passive_selected(slot, index))
 		_passives.append(option)
-	_game = _panel(Vector2(968, 414), Vector2(286, 183))
-	_icon = TextureRect.new()
-	_icon.position = Vector2(16, 15)
-	_icon.size = Vector2(46, 46)
-	_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_game.add_child(_icon)
-	_cast = Button.new()
-	_cast.name = "CastSkillButton"
-	_cast.position = Vector2(71, 13)
-	_cast.size = Vector2(198, 52)
-	_cast.focus_mode = Control.FOCUS_NONE
-	_theme(_cast, 23)
-	_cast.add_theme_stylebox_override("normal", _box(GOLD))
-	_cast.add_theme_stylebox_override("hover", _box(GOLD.lightened(0.15)))
-	_cast.add_theme_stylebox_override("pressed", _box(GOLD.darkened(0.1)))
-	_cast.add_theme_stylebox_override("disabled", _box(Color("d5d9cf")))
-	_cast.pressed.connect(func(): _action("NativeKeySkill()"))
-	_game.add_child(_cast)
-	_status = _label(_game, "技能就绪", Vector2(17, 74), Vector2(252, 29), 20)
-	_duration = _label(_game, "", Vector2(17, 104), Vector2(252, 29), 18)
-	_label(_game, "Q / 空格释放技能", Vector2(17, 143), Vector2(252, 27), 18)
 	_menu_layer.hide()
-	_game.hide()
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	if _menu_layer.visible and event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
@@ -220,7 +191,7 @@ func _process(delta: float) -> void:
 func _render(data: Dictionary) -> void:
 	if not _ready_catalog and not data.get("active", []).is_empty(): _populate(data)
 	_menu_layer.visible = bool(data.get("home", false)) and bool(data.get("menu_open", false))
-	_game.visible = bool(data.get("running", false))
+
 	var selected := int(data.get("selected", 3))
 	if selected in _active_ids: _active.select(_active_ids.find(selected))
 	var row: Dictionary = _catalog.get(selected, {})
@@ -229,10 +200,3 @@ func _render(data: Dictionary) -> void:
 	for slot in _passives.size():
 		var passive_id := int(equipped[slot]) if slot < equipped.size() else 0
 		if passive_id in _passive_ids: _passives[slot].select(_passive_ids.find(passive_id))
-	var cooldown := int(data.get("cooldown_ms", 0))
-	var duration := int(data.get("duration_ms", 0))
-	_cast.text = str(data.get("name", "释放技能"))
-	_cast.disabled = not bool(data.get("alive", false)) or cooldown > 0
-	_icon.texture = _skill_icon(_catalog.get(int(data.get("skill_id", selected)), {}))
-	_status.text = "冷却 %.1f 秒" % (cooldown / 1000.0) if cooldown > 0 else "技能就绪"
-	_duration.text = "效果剩余 %.1f 秒" % (duration / 1000.0) if duration > 0 else "每次释放后进入独立冷却"

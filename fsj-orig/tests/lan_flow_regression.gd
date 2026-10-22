@@ -35,6 +35,16 @@ func key(code: Key) -> void:
 		event.pressed = down
 		Input.parse_input_event(event)
 
+func click(control: Control) -> void:
+	var point := control.get_global_rect().get_center()
+	for down in [true,false]:
+		var event := InputEventMouseButton.new()
+		event.button_index=MOUSE_BUTTON_LEFT
+		event.pressed=down
+		event.position=point
+		event.global_position=point
+		Input.parse_input_event(event)
+
 func _ready() -> void:
 	if "--client" in OS.get_cmdline_user_args(): role = "client"
 	for argument in OS.get_cmdline_user_args():
@@ -129,7 +139,10 @@ func client_step(now: int) -> void:
 			key(KEY_LEFT)
 			input_sent = true
 		if not cast_sent and now - stage_time > 300:
-			key(KEY_Q)
+			var cast := lua("return g_App:GetGameMain().m_pGameButton.m_pBtnSkill.__node") as Control
+			check(cast != null and cast.is_visible_in_tree(),"guest sees original APK skill button")
+			check(lua("return g_App:GetGameMain().m_pGameButton.m_pBtnSkill.__hud_skill") == 2,"guest APK button uses its own authoritative loadout")
+			if cast != null: click(cast)
 			cast_sent = true
 		var alive = lua("return g_App:GetDirector().__alive")
 		if alive == false: saw_dead = true
@@ -150,10 +163,18 @@ func client_step(now: int) -> void:
 			stage = 2
 	elif stage == 2 and session.phase == "playing" and session.round_id == 2:
 		check(lua("return g_App.__scene.__time<2000 and not g_App.__scene.__match_finished") == true, "rematch resets replica world")
-		session.leave_room()
-		check(lua("return g_App.__scene==nil") == true, "guest leaving releases replica")
-		stage = 3
-		stage_time = now
+		click(lua("return g_App:GetGameMain().m_pBtnClose.__node") as Control)
+		stage=22
+		stage_time=now
+	elif stage == 22 and now-stage_time>200:
+		check(lua("return g_App.m_pMessageBox:IsShow()") == true,"guest APK exit opens original confirmation")
+		click(lua("return g_App.m_pMessageBox.m_tblButton[CMessageBox.OK].__node") as Control)
+		stage=23
+		stage_time=now
+	elif stage == 23 and now-stage_time>200:
+		check(lua("return g_App.__scene==nil") == true, "guest original exit releases replica")
+		stage=3
+		stage_time=now
 	elif stage == 3 and now - stage_time > 1200:
 		check(session.join_room("重返朋友", "127.0.0.1", 27867), "guest can rejoin waiting room")
 		stage = 4

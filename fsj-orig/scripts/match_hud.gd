@@ -3,9 +3,6 @@ extends Control
 # Presentation for the local timed mode; Lua owns every rule and deadline.
 # Fixed 1280x720 canvas follows the original game's stretch transform.
 var host: LuaHost
-var _clock_panel: Panel
-var _clock: Label
-var _status: Label
 var _respawn: Label
 var _finish_layer: ColorRect
 var _winner: Label
@@ -24,9 +21,8 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	z_index = 3000
-	_build_clock()
+	_build_respawn()
 	_build_results()
-	_clock_panel.hide()
 	_respawn.hide()
 	_finish_layer.hide()
 
@@ -73,17 +69,7 @@ func _button(parent: Node, caption: String, pos: Vector2, extent: Vector2, fill:
 	parent.add_child(button)
 	return button
 
-func _build_clock() -> void:
-	_clock_panel = Panel.new()
-	_clock_panel.name = "MatchClockPanel"
-	_clock_panel.position = Vector2(470, 8)
-	_clock_panel.size = Vector2(340, 98)
-	_clock_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_clock_panel.add_theme_stylebox_override("panel", _box(CREAM))
-	add_child(_clock_panel)
-	_clock = _text(_clock_panel, "4:00", Vector2(0, 0), Vector2(340, 59), 39)
-	_clock.name = "MatchTimer"
-	_status = _text(_clock_panel, "限时赛 · 第 1 / 10 名", Vector2(0, 57), Vector2(340, 31), 20)
+func _build_respawn() -> void:
 	_respawn = _text(self, "3 秒后重生", Vector2(390, 280), Vector2(500, 72), 36, Color.WHITE)
 	_respawn.name = "MatchRespawn"
 	_respawn.add_theme_color_override("font_outline_color", INK)
@@ -150,16 +136,10 @@ func _render(snapshot: String) -> void:
 	var lines: PackedStringArray = snapshot.split("\n")
 	var header: PackedStringArray = lines[0].split("|")
 	var mode: String = header[0]
-	_clock_panel.visible = mode == "playing"
 	_finish_layer.visible = mode == "finished"
 	_respawn.hide()
 	if header.size() < 10:
 		return
-	var remaining_ms: int = maxi(0, int(header[1]))
-	var seconds: int = int(ceil(float(remaining_ms) / 1000.0))
-	_clock.text = "%d:%02d" % [seconds / 60, seconds % 60]
-	_clock.add_theme_color_override("font_color", Color("e14451") if seconds <= 30 else INK)
-	_status.text = "第 %s / %s 名  ·  占地 %0.1f%%" % [header[2], header[3], float(header[4])]
 	var respawn_ms: int = int(header[7])
 	if mode == "playing" and respawn_ms > 0:
 		_respawn.text = "%d 秒后重生" % int(ceil(float(respawn_ms) / 1000.0))

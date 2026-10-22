@@ -120,7 +120,7 @@ function M.Configure(sc, duration_ms)
     sc.__match_seed_attempts = 0
     stop_endless_checks(sc)
     hide_old_results(sc)
-    show_original_clock(false)
+    show_original_clock(true)
     return sc
 end
 function M.Start(duration_ms)

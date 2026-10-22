@@ -6,6 +6,7 @@ if SceneInstallHooks then SceneInstallHooks() end
 if LoginInstallHooks then LoginInstallHooks() end
 if SceneMatch then SceneMatch.InstallHooks() end
 if SceneSkills then SceneSkills.InstallHooks() end
+if SceneBattleHUD then SceneBattleHUD.InstallHooks() end
 
 require "natives.scene_lan"
 SceneLAN.InstallHooks()

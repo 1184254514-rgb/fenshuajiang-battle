@@ -8,6 +8,8 @@ const WS_TEXTXC := GuiDraw.WS_TEXTXC
 const WS_TEXTXR := GuiDraw.WS_TEXTXR
 const WS_TEXTYC := GuiDraw.WS_TEXTYC
 const WS_TEXTYB := GuiDraw.WS_TEXTYB
+const WM_LBUTTONDOWN := 513
+const WM_LBUTTONUP := 514
 const WM_CREATE := 1
 const WM_SETFOCUS := 7
 const WM_KILLFOCUS := 8
@@ -1604,11 +1606,13 @@ func _gui_input(event: InputEvent) -> void:
 		# but let it bubble to the parent window, so the button underneath still fires (Claude).
 		var capture := _captures_click()
 		if mouse_event.pressed:
+			_send(WM_LBUTTONDOWN, 1, _pack_lparam(mouse_event.position))
 			_pressed = true
 			_set_visual_state(true)
 			if capture: accept_event()
 		else:
 			var was_pressed := _pressed
+			_send(WM_LBUTTONUP, 0, _pack_lparam(mouse_event.position))
 			_pressed = false
 			if was_pressed:
 				_finish_click(mouse_event.position)
@@ -1622,12 +1626,14 @@ func _gui_input(event: InputEvent) -> void:
 		var touch_event := event as InputEventScreenTouch
 		_last_pointer = touch_event.position
 		if touch_event.pressed:
+			_send(WM_LBUTTONDOWN, 1, _pack_lparam(touch_event.position))
 			_touch_down = true
 			_pressed = true
 			_set_visual_state(true)
 			accept_event()
 		else:
 			var was_pressed := _touch_down
+			_send(WM_LBUTTONUP, 0, _pack_lparam(touch_event.position))
 			_touch_down = false
 			_pressed = false
 			if was_pressed:

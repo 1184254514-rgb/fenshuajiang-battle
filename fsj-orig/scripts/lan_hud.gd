@@ -14,8 +14,6 @@ var close_button: Button
 var description: Label
 var roster: Label
 var status_label: Label
-var game_strip: HBoxContainer
-var game_status: Label
 var opened := false
 var _poll_left := 0.0
 const INK := Color("14364b")
@@ -114,20 +112,7 @@ func _ready() -> void:
 	start_button = button(panel, "开始 4 分钟比赛", Vector2(30, 488), Vector2(420, 43), func(): session.start_match())
 	start_button.name = "StartLanMatchButton"
 	leave_button = button(panel, "离开房间", Vector2(472, 488), Vector2(236, 43), func(): session.leave_room())
-	game_strip = HBoxContainer.new()
-	game_strip.position = Vector2(20, 10)
-	game_strip.add_theme_constant_override("separation", 12)
-	add_child(game_strip)
-	game_status = label(game_strip, "", Vector2.ZERO, Vector2(260, 36), 19)
-	game_status.custom_minimum_size = Vector2(260, 36)
-	game_status.add_theme_color_override("font_color", Color.WHITE)
-	game_status.add_theme_color_override("font_outline_color", INK)
-	game_status.add_theme_constant_override("outline_size", 5)
-	var exit := button(game_strip, "离开", Vector2.ZERO, Vector2(66, 36), func(): session.leave_room())
-	exit.custom_minimum_size = Vector2(66, 36)
-	theme_control(exit, 18)
 	layer.hide()
-	game_strip.hide()
 	if "--lan" in OS.get_cmdline_user_args() or OS.has_feature("lan_build"): opened = true
 
 func _process(delta: float) -> void:
@@ -137,9 +122,8 @@ func _process(delta: float) -> void:
 	var in_game: bool = session.phase in ["playing", "finished", "loading"]
 	var connected: bool = not session.role.is_empty()
 	layer.visible = not in_game and (opened or connected)
-	entry.visible = not in_game and not layer.visible and host.lua.do_string("return not (g_App and g_App.__scene)") == true
-	game_strip.visible = in_game
-	game_status.text = "局域网 · %s · %d 人" % ["房主" if session.role == "host" else session.nickname, session.members.size()]
+	var original_modal: bool = host.lua.do_string("local h=g_App and g_App:GetGameStart();local w=h and rawget(h,'m_pWndNewSeasonComing');return w and w:IsShow() or false") == true
+	entry.visible = not original_modal and not in_game and not layer.visible and host.lua.do_string("return not (g_App and g_App.__scene)") == true
 	nick.editable = not connected
 	ip.editable = not connected
 	host_button.disabled = connected

@@ -72,6 +72,11 @@ func _ready() -> void:
 	check(not skill_hud.get("_menu_layer").visible, "skill menu hidden during login")
 	lua("g_App:GetLoginFrame():ConnectWorld()")
 	await frames(150)
+	# The original calendar can show a season reminder on particular dates.
+	var season_close := lua("return g_App:GetGameStart().m_pWndNewSeasonComing.m_pBtnOK.__node") as Control
+	if season_close != null and season_close.is_visible_in_tree():
+		click(season_close)
+		await frames(5)
 	var self_entry := lua("return g_App:GetGameStart().m_pBtnEndless.__node") as Control
 	check(self_entry != null and self_entry.is_visible_in_tree(), "original self entry available")
 	check(not skill_hud.get("_menu_layer").visible, "lobby skill settings hidden by default")
@@ -95,7 +100,7 @@ func _ready() -> void:
 	check(lua("return g_App.__scene.__limit") == 240000, "default round lasts four minutes")
 	check(lua("return #g_App.__scene.__order") == 10, "ten fixed competitors spawn")
 	check(lua("local seen={}; for _,p in ipairs(g_App.__scene.__order) do if seen[p.__manor.colorID] then return false end; seen[p.__manor.colorID]=true end; return true") == true, "all competitors have distinct colours")
-	check(match_hud.get("_clock_panel").visible, "countdown displayed")
+	check(lua("return g_App:GetGameMain():GetDlgChild('W_youxishijian'):IsShow()") == true, "APK countdown displayed")
 	check(lua("return g_App:GetDirector().__skillID") == 2, "lobby skill selection applied")
 	lua("__timed_clock_before=g_App.__scene.__time")
 	await frames(60)
@@ -114,6 +119,15 @@ func _ready() -> void:
 	check(lua("return g_App:GetDirector():GetSkillWaitTime(2) > 0") == true, "skill cooldown starts")
 	check(lua("local p=g_App:GetDirector(); return not p:UseSkill(2)") == true, "cooldown prevents repeated cast")
 	await frames(8)
+	check(match_hud.find_child("MatchClockPanel",true,false)==null, "custom clock panel is replaced by the APK clock")
+	check(lua("return g_App:GetGameMain().m_pGameButton.m_pBtnSkill.__hud_skill") == 2, "APK active button uses selected skill")
+	check(lua("return g_App:GetGameMain().m_pGameButton.m_tblWndPassive[1].__hud_skill") == 101, "APK passive slot shows equipped skill")
+	check(lua("return g_App:GetGameMain().m_pWndTaskTips:IsShow()") == false, "absent daily task cannot show giant empty banner")
+	check(lua("return g_App:GetGameMain():GetDlgChild('shengyushijian'):IsShow()") == false,"APK Start hides unused remaining-time banner")
+	check(lua("return g_App:GetGameMain():GetDlgChild('W_xinhao'):IsShow()") == false,"offline play shows no fake network signal")
+	var original_clock := lua("return g_App:GetGameMain().m_pWndGameTime.__node") as Control
+	check(original_clock != null and original_clock.get_global_rect().position == Vector2(886,0), "countdown uses exact APK position")
+	check(str(lua("return g_App:GetGameMain().m_pWndGameTime:GetWndText()")).begins_with("03:"), "APK countdown displays four-minute remaining time")
 	await screenshot("playing")
 	# Every identity should respawn rather than ending this round early.
 	lua("""
@@ -156,11 +170,22 @@ func _ready() -> void:
 	check(lua("return #g_App.__scene.__order") == 10, "rematch roster contains no stale identities")
 	check(skill_hud != null, "skill controls installed")
 	if skill_hud != null:
-		var cast := skill_hud.find_child("CastSkillButton", true, false) as Button
-		check(cast != null and cast.visible and not cast.disabled, "fresh round skill button is available")
+		var cast := lua("return g_App:GetGameMain().m_pGameButton.m_pBtnSkill.__node") as Control
+		check(cast != null and cast.is_visible_in_tree() and cast.get("enabled"), "fresh round skill button is available")
 		if cast != null: click(cast)
 		await frames(1)
 		check(lua("return g_App:GetDirector():GetSkillWaitTime(2)>0") == true, "mouse click activates skill through the real UI")
+		lua("g_App:GetDirector().__skill_cooldowns[2]=nil")
+		await frames(2)
+		if cast != null:
+			for down in [true,false]:
+				var touch := InputEventScreenTouch.new()
+				touch.index=0
+				touch.pressed=down
+				touch.position=cast.get_global_rect().get_center()
+				Input.parse_input_event(touch)
+		await frames(1)
+		check(lua("return g_App:GetDirector():GetSkillWaitTime(2)>0") == true,"touch activates original skill button")
 	lua("SceneMatch.Finish(g_App.__scene)")
 	await frames(10)
 	var home := match_hud.find_child("MatchHomeButton", true, false) as Button
@@ -170,6 +195,15 @@ func _ready() -> void:
 	check(lua("return g_App.__scene == nil") == true, "return home releases match")
 	check(self_entry.is_visible_in_tree(), "original lobby entry returns")
 	check(not skill_hud.get("_menu_layer").visible, "skill menu remains closed on return home")
+	# Exercise the original native exit control instead of the removed LAN strip.
+	lua("SceneMatch.Start()")
+	await frames(35)
+	click(lua("return g_App:GetGameMain().m_pBtnClose.__node") as Control)
+	await frames(5)
+	check(lua("return g_App.m_pMessageBox:IsShow()") == true,"APK exit opens original confirmation")
+	click(lua("return g_App.m_pMessageBox.m_tblButton[CMessageBox.OK].__node") as Control)
+	await frames(15)
+	check(lua("return g_App.__scene==nil") == true,"APK confirmed exit releases timed match")
 	check(host._tick_errors == 0, "no Lua input, tick or UI errors")
 	finish()
 
