@@ -100,9 +100,15 @@ func host_step(now: int) -> void:
 		stage_time = now
 	elif stage == 3 and now - stage_time > 900:
 		check(session.phase == "finished", "host detects authoritative timeout")
-		check(session.start_match(), "host rematches all peers")
-		stage = 4
+		var replay = get_child(0).find_child("RematchButton", true, false)
+		check(replay != null and replay.is_visible_in_tree() and replay.is_enable(), "host original replay button is enabled")
+		if replay != null: click(replay)
+		stage = 31
 		stage_time = now
+	elif stage == 31 and session.phase == "playing" and session.round_id == 2:
+		check(true, "host original replay button rematches all peers")
+		stage=4
+		stage_time=now
 	elif stage == 4 and session.members.size() == 1:
 		check(lua("return g_App.__scene.__order[2].__ai~=nil and g_App.__scene.__order[2].__net_peer==nil") == true, "departed player taken over by AI")
 		session.game_action("leave")
@@ -161,7 +167,15 @@ func client_step(now: int) -> void:
 			check(int(host.scene_view.actors[director_id].get("cast_spawn_count", 0)) >= 1, "authoritative cast visual reaches guest")
 			check(lua("local sc=g_App.__scene;local n=0;for _,p in ipairs(sc.__order) do n=n+p.__manor.count end;local c=0;for _,o in pairs(sc.__owner) do if o~=0 then c=c+1 end end;return n==c") == true, "replica grid matches authoritative territory counts")
 			stage = 2
-	elif stage == 2 and session.phase == "playing" and session.round_id == 2:
+			stage_time=now
+	elif stage == 2 and session.phase == "finished" and now-stage_time>300:
+		var hud = get_child(0).get_node("MatchHud")
+		var replay = hud.find_child("RematchButton",true,false)
+		check(hud.get("_rows").get_child_count()==10,"guest original ranking shows ten authoritative rows")
+		check(replay != null and not replay.is_enable(),"guest original replay button waits for host")
+		click(hud.get("_tabs")[1])
+		stage=21
+	elif stage in [2,21] and session.phase == "playing" and session.round_id == 2:
 		check(lua("return g_App.__scene.__time<2000 and not g_App.__scene.__match_finished") == true, "rematch resets replica world")
 		click(lua("return g_App:GetGameMain().m_pBtnClose.__node") as Control)
 		stage=22

@@ -142,7 +142,7 @@ func _process(delta: float) -> void:
 	else:
 		description.text = "同一 Wi-Fi 或有线局域网 · 无需密码\n最多 10 人，空位由 AI 补齐，每局 4 分钟"
 		roster.text = "先在大厅底部「技能」中配置技能，再创建或加入房间。"
-	var replay := get_parent().find_child("RematchButton", true, false) as Button
+	var replay := get_parent().find_child("RematchButton", true, false)
 	if replay != null:
-		replay.disabled = session.role == "client"
-		replay.text = "等待房主再开" if session.role == "client" else "再来一局"
+		replay.enable_wnd(session.role != "client")
+		replay.set_wnd_text("等待房主再开" if session.role == "client" else "继续游戏")

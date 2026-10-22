@@ -363,4 +363,28 @@ function M.UIState()
     end
     return table.concat(state, "\n")
 end
+-- Settlement consumes the same host-owned stats on offline and LAN worlds.
+-- No ladder progress, paid currency or unrecorded official-server result is invented.
+function M.SettlementDataJSON()
+    local sc=scene()
+    if not M.IsFinished(sc) then return "{}" end
+    local p=sc.m_pDirectorObj
+    local st=p and p.__stats or {}
+    local rhythm=p and p.__rhythm or {}
+    local counts={}
+    for i=1,4 do counts[i]=(rhythm.count or {})[i] or 0 end
+    local area=SceneScore.GetProperty(p,SceneScore.SPT.AREA_SCORE)
+    local kill=SceneScore.GetProperty(p,SceneScore.SPT.KILL_SCORE)
+    local combo=SceneScore.GetProperty(p,SceneScore.SPT.COMBO_SCORE)
+    local avatars={}
+    local cfg=CHeadIconConfig:Inst().cfg or {}
+    for _,actor in ipairs(sc.__order or {}) do
+        local icon=cfg[actor.__equipID or 1]
+        if icon then avatars[tostring(actor.__objectID)]={icon.fLeft,icon.fTop,icon.fRight,icon.fBottom} end
+    end
+    return SceneSkills.EncodeJSON({avatars=avatars,area=area,kill=kill,combo=combo,
+        total=area+kill+combo,kills=st.killCount or 0,deaths=p.__deaths or 0,
+        counts=counts,beats=rhythm.total or 0,maxCombo=rhythm.maxCombo or 0,
+        seconds=math.floor((current_time(sc)-(sc.__match_started_at or 0))/1000)})
+end
 return M

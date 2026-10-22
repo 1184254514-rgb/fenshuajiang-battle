@@ -10,7 +10,7 @@
 
 当前可编辑工程已直接纳入仓库的 [`fsj-orig/`](fsj-orig/) 目录。后续复刻改动会连同源码、测试与差异记录一起同步，不再只上传页面说明。
 
-当前 `v0.4.0-native-hud` 按原 APK 接回局内倒计时、圆形主动技能和底部被动技能栏，修复空白任务条、原按钮点击及退出，同时保留4分钟与现有联机玩法。详见 [核对记录](fsj-orig/docs/APK差异核对-2026-10-21.md) 和 [实际运行截图](fsj-orig/docs/images/battle-hud-v0.4.png)。
+当前 `v0.5.0-native-settlement` 继续用原包资源恢复结算的本局排名、个人战绩和节奏统计，接入真实本局数据与联机重开。保留上一版原局内计时和技能栏、4分钟及现有玩法。详见 [核对记录](fsj-orig/docs/APK差异核对-2026-10-21.md)、[结算截图](fsj-orig/docs/images/settlement-ranking-v0.5.png) 和 [局内截图](fsj-orig/docs/images/battle-hud-v0.4.png)。
 
 ## 下载完整工程与游戏
 

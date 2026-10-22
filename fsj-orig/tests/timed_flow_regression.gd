@@ -161,8 +161,28 @@ func _ready() -> void:
 	check(lua("return g_App.__scene.__time == __timed_frozen_time and g_App.__scene.__c_time == __timed_frozen_item_time") == true, "world and item clocks freeze after timeout")
 	check(lua("local p=g_App:GetDirector(); return p.__x==__timed_x and p.__y==__timed_y") == true, "post-timeout input cannot move director")
 	check(lua("return #SceneMatch.Results(g_App.__scene)") == 10, "final standings include all competitors")
+	check(match_hud.get("_rows").get_child_count()==10, "APK ranking contains all ten rows")
+	check(match_hud.get("_pages")[0].get_node("list").position==Vector2(1,47), "APK ranking uses authored list position")
+	click(match_hud.get("_tabs")[1])
+	await frames(3)
+	check(match_hud.get("_pages")[1].visible and not match_hud.get("_pages")[0].visible, "original personal score tab works")
+	check(int(match_hud.get("_pages")[1].get_node("E_benju").get_wnd_text())==int(lua("local d=SceneMatch.SettlementDataJSON();return Host:parse_json(d)['total']")), "score tab reads authoritative totals")
+	await screenshot("score")
+	click(match_hud.get("_tabs")[2])
+	await frames(3)
+	check(match_hud.get("_pages")[2].visible, "original rhythm tab works")
+	await screenshot("rhythm")
+	click(match_hud.get("_tabs")[0])
+	await frames(3)
+	check(match_hud.get("_rows").get_child(0).get_node("head/touxiang/EquippedAvatar")!=null,"ranking displays equipped avatar from original atlas")
 	await screenshot("results")
-	var rematch := match_hud.find_child("RematchButton", true, false) as Button
+	var scroll: ScrollContainer = match_hud.get("_scroll")
+	scroll.scroll_vertical=10000
+	await frames(3)
+	check(scroll.scroll_vertical>0,"all ten ranking rows can be scrolled")
+	check(match_hud.get("_rows").get_child(9).get_global_rect().intersects(scroll.get_global_rect()),"last rank is reachable")
+	await screenshot("results-bottom")
+	var rematch := match_hud.find_child("RematchButton", true, false) as Control
 	check(rematch != null, "rematch button exists")
 	if rematch != null: click(rematch)
 	await frames(35)
@@ -188,7 +208,7 @@ func _ready() -> void:
 		check(lua("return g_App:GetDirector():GetSkillWaitTime(2)>0") == true,"touch activates original skill button")
 	lua("SceneMatch.Finish(g_App.__scene)")
 	await frames(10)
-	var home := match_hud.find_child("MatchHomeButton", true, false) as Button
+	var home := match_hud.find_child("MatchHomeButton", true, false) as Control
 	check(home != null, "home button exists")
 	if home != null: click(home)
 	await frames(20)
