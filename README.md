@@ -10,7 +10,7 @@
 
 当前可编辑工程已直接纳入仓库的 [`fsj-orig/`](fsj-orig/) 目录。后续复刻改动会连同源码、测试与差异记录一起同步，不再只上传页面说明。
 
-当前 `v0.6.0-planner` 接通局内经验与主动/被动升级，并加入 Godot 右侧“策划设置”停靠栏及客户端隐藏 F8 面板。默认保留4分钟与原局内/结算布局。详见 [策划工具说明](fsj-orig/docs/策划设置使用说明.md)、[升级核对记录](fsj-orig/docs/APK差异核对-2026-10-21.md) 和 [面板截图](fsj-orig/docs/images/planner-console-v0.6.png)。
+当前 `v0.7.0-battle-details` 恢复原版个人战绩页的击杀与被击杀双列明细：按对手汇总次数、显示双方头像、列表可滚动，局域网由房主同步。保留局内经验升级、Godot策划设置和客户端隐藏F8入口。详见 [复刻核对记录](fsj-orig/docs/APK差异核对-2026-10-21.md)、[明细截图](fsj-orig/docs/images/battle-details-v0.7.png) 和 [策划工具说明](fsj-orig/docs/策划设置使用说明.md)。
 
 ## 下载完整工程与游戏
 

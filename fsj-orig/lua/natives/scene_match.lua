@@ -227,8 +227,23 @@ function M.Respawn(sc, p)
     sc.__match_respawns[p.__objectID] = nil
     return p.__alive == true
 end
-function M.OnPlayerDeath(sc, victim, _killer)
+function M.OnPlayerDeath(sc, victim, killer)
     if not M.IsTimed(sc) or M.IsFinished(sc) or not victim then return end
+    if not sc.__lan_client then
+        local function add(actor, field, other)
+            actor[field] = actor[field] or {}
+            local id = other and other.__objectID or 0
+            local entry
+            for _, row in ipairs(actor[field]) do if row.id == id then entry=row; break end end
+            if not entry then
+                entry={id=id,name=other and other.__nick or "领地消失",equip=other and other.__equipID or 0,count=0}
+                actor[field][#actor[field]+1]=entry
+            end
+            entry.count=entry.count+1
+        end
+        add(victim,"__battle_deaths",killer ~= victim and killer or nil)
+        if killer and killer ~= victim then add(killer,"__battle_kills",victim) end
+    end
     sc.__match_respawns[victim.__objectID] = current_time(sc) + (sc.__planner_cfg and sc.__planner_cfg.respawn_ms or M.RESPAWN_MS)
 end
 function M.RespawnRemaining(sc, p)
@@ -390,6 +405,8 @@ function M.SettlementDataJSON()
     end
     return SceneSkills.EncodeJSON({avatars=avatars,area=area,kill=kill,combo=combo,
         total=area+kill+combo,kills=st.killCount or 0,deaths=p.__deaths or 0,
+        killDetails=p.__battle_kills or {},deathDetails=p.__battle_deaths or {},directorID=p.__objectID,
+        countFormat=g_App:GetString("jiesuantips1"),
         counts=counts,beats=rhythm.total or 0,maxCombo=rhythm.maxCombo or 0,
         seconds=math.floor((current_time(sc)-(sc.__match_started_at or 0))/1000)})
 end

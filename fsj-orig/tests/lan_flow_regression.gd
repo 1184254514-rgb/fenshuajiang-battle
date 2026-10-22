@@ -90,7 +90,7 @@ func host_step(now: int) -> void:
 		check(lua("return g_App:GetDirector():GetSkillWaitTime(3)==0") == true, "remote input does not control host")
 		check(lua("return g_App.__scene.__order[2].__nick") == "朋友乙测试", "UTF-8 nickname preserved")
 		check(lua("return g_App.__scene.__order[2].__manor.count>=__lan_test_area+5") == true, "remote concrete skill claims authoritative territory")
-		lua("SceneSim.kill_player(g_App.__scene,g_App.__scene.__order[2],nil,false)")
+		lua("SceneSim.kill_player(g_App.__scene,g_App.__scene.__order[2],g_App.__scene.__order[1],true,'trail')")
 		stage = 2
 		stage_time = now
 	elif stage == 2 and now - stage_time > 3400:
@@ -174,6 +174,7 @@ func client_step(now: int) -> void:
 		if alive == false: saw_dead = true
 		elif saw_dead: saw_alive_again = true
 		if session.phase == "finished":
+			check(lua("local p=g_App:GetDirector();return p.__battle_deaths and p.__battle_deaths[1].id==g_App.__scene.__order[1].__objectID and p.__battle_deaths[1].count==1") == true,"guest death detail preserves host killer identity after respawn")
 			check(saw_dead and saw_alive_again, "remote death and three-second respawn replicated")
 			check(lua("return #SceneMatch.Results(g_App.__scene)") == 10, "final results replicated")
 			check(lua("return SceneMatch.GetTimeRemain(g_App.__scene)") == 0, "replica countdown ends at zero")
@@ -191,6 +192,7 @@ func client_step(now: int) -> void:
 	elif stage == 2 and session.phase == "finished" and now-stage_time>300:
 		var hud = get_child(0).get_node("MatchHud")
 		var replay = hud.find_child("RematchButton",true,false)
+		check(hud.get("_detail_rows")[1].get_child_count()>=1,"guest original death list renders authoritative battle details")
 		check(hud.get("_rows").get_child_count()==10,"guest original ranking shows ten authoritative rows")
 		check(replay != null and not replay.is_enable(),"guest original replay button waits for host")
 		click(hud.get("_tabs")[1])

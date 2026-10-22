@@ -182,6 +182,19 @@ func _ready() -> void:
 	check(lua("return g_App:GetDirector().__progress_exp>=600 and g_App:GetDirector().__skill_level==2 and g_App:GetDirector().__skill_passive_levels[1]==2") == true,"low-level respawn keeps XP and recomputes skills")
 	check(lua("local p=g_App:GetDirector();SceneItemsC.SetExp(p,9000);SceneProgression.OnRespawn(p);return p.__progress_exp==4500 and p.__progress_level==7 and p.__skill_level==5") == true,"higher-level rebirth follows original XP ratio")
 	check(lua("return g_App:GetDirector().__c_inScene") == true, "respawn restores native scene membership")
+	lua("""
+		local sc=g_App.__scene;local d=sc.m_pDirectorObj
+		local a,b=sc.__order[2],sc.__order[3]
+		a.__nick='同名画匠';b.__nick='同名画匠'
+		__details_before=#(d.__battle_kills or {})
+		SceneSim.kill_player(sc,a,d,true,'trail')
+		__details_first=a.__objectID
+	""")
+	check(lua("local sc=g_App.__scene;local d=sc.m_pDirectorObj;local a=sc.__order[2];local n=d.__battle_kills[#d.__battle_kills].count;return not SceneSim.kill_player(sc,a,d,true,'trail') and d.__battle_kills[#d.__battle_kills].count==n") == true,"duplicate death cannot inflate battle history")
+	lua("local sc=g_App.__scene;local a=sc.__order[2];SceneMatch.Respawn(sc,a);SceneSim.kill_player(sc,a,sc.m_pDirectorObj,true,'trail');SceneSim.kill_player(sc,sc.__order[3],sc.m_pDirectorObj,true,'trail')")
+	check(lua("local d=g_App:GetDirector();local rows=d.__battle_kills;return #rows==__details_before+2 and rows[#rows-1].count==2 and rows[#rows].count==1 and rows[#rows-1].id~=rows[#rows].id") == true,"same-name opponents remain separate and repeated kills aggregate")
+	check(lua("local d=g_App:GetDirector();return d.__battle_deaths[1].id==0 and d.__battle_deaths[1].count>=1") == true,"environment death is recorded without inventing a killer")
+	lua("local sc=g_App.__scene;for i=4,7 do SceneSim.kill_player(sc,sc.__order[i],sc.m_pDirectorObj,true,'trail') end")
 	# Shorten only this test's remaining duration, then cross the deadline.
 	lua("local sc=g_App.__scene; sc.__limit=sc.__time-sc.__match_started_at+1")
 	await frames(2)
@@ -203,6 +216,15 @@ func _ready() -> void:
 	await frames(3)
 	check(match_hud.get("_pages")[1].visible and not match_hud.get("_pages")[0].visible, "original personal score tab works")
 	check(int(match_hud.get("_pages")[1].get_node("E_benju").get_wnd_text())==int(lua("local d=SceneMatch.SettlementDataJSON();return Host:parse_json(d)['total']")), "score tab reads authoritative totals")
+	check(match_hud.get("_detail_rows")[0].get_child_count()>=2,"original kill detail rows are visible")
+	check(not match_hud.get("_pages")[1].get_node("kong1").visible,"nonempty kills hide original empty hint")
+	check(match_hud.get("_detail_rows")[1].get_child_count()>=1,"original death detail rows include environment cause")
+	var detail_scroll: ScrollContainer = match_hud.get("_detail_rows")[0].get_parent()
+	detail_scroll.scroll_vertical=10000
+	await frames(3)
+	check(detail_scroll.scroll_vertical>0,"kill details scroll beyond the first opponents")
+	detail_scroll.scroll_vertical=0
+	await frames(2)
 	await screenshot("score")
 	click(match_hud.get("_tabs")[2])
 	await frames(3)
@@ -224,6 +246,7 @@ func _ready() -> void:
 	await frames(35)
 	check(lua("return g_App.__scene.__started and not g_App.__scene.__match_finished") == true, "rematch creates an active fresh round")
 	check(lua("return #g_App.__scene.__order") == 10, "rematch roster contains no stale identities")
+	check(lua("return g_App:GetDirector().__battle_kills==nil and g_App:GetDirector().__battle_deaths==nil") == true,"rematch clears battle detail history")
 	check(skill_hud != null, "skill controls installed")
 	if skill_hud != null:
 		var cast := lua("return g_App:GetGameMain().m_pGameButton.m_pBtnSkill.__node") as Control

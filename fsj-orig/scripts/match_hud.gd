@@ -9,6 +9,7 @@ var _result_frame: Control
 var _pages: Array[Control] = []
 var _tabs: Array[Control] = []
 var _scroll: ScrollContainer
+var _detail_rows: Array[VBoxContainer] = []
 var _rows: VBoxContainer
 var _last_state: String = ""
 var _poll_left: float = 0.0
@@ -95,9 +96,16 @@ func _build_results() -> void:
 	for path in ["bg_benjudefen", "bg_tijidefen", "bg_jishadefen", "bg_lianjidefen"]:
 		_pages[1].get_node(path + "/jilu").hide()
 	for path in ["list1", "list2"]:
-		_pages[1].get_node(path).hide()
-	for path in ["kong1", "kong2"]:
-		_pages[1].get_node(path).set_wnd_text("本局未记录逐次明细")
+		var parent = _pages[1].get_node(path)
+		var scroll := ScrollContainer.new()
+		scroll.name = "BattleDetailsScroll"
+		scroll.size = parent.size
+		scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		parent.add_child(scroll)
+		var rows := VBoxContainer.new()
+		rows.add_theme_constant_override("separation", 0)
+		scroll.add_child(rows)
+		_detail_rows.append(rows)
 	for path in ["jiaoxue", "bg_lianjijilu", "bg_jinriizuijia", "bg_pingjia", "tongji/pingjia", "tongji/W_pingjia"]:
 		_pages[2].get_node(path).hide()
 	_pages[2].get_node("E_pingjia").hide()
@@ -123,9 +131,51 @@ func _select_page(index: int) -> void:
 		_pages[i].visible = i == index
 		_tabs[i].set_check(i == index)
 
+func _avatar(head: Control, crop: Array) -> void:
+	if crop.size() != 4: return
+	var atlas := AtlasTexture.new()
+	atlas.atlas = GuiRuntime.atlas("fs_jm003.tex")
+	atlas.region = Rect2(float(crop[0]),float(crop[1]),float(crop[2])-float(crop[0]),float(crop[3])-float(crop[1]))
+	var texture := TextureRect.new()
+	texture.texture = atlas
+	texture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	texture.size = head.size
+	texture.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	head.add_child(texture)
+
+func _fill_details(stats: Dictionary) -> void:
+	for side in 2:
+		var rows := _detail_rows[side]
+		for child in rows.get_children():
+			rows.remove_child(child)
+			child.queue_free()
+		var details = stats.get("killDetails" if side == 0 else "deathDetails", [])
+		# Lua's empty table is encoded as an empty object.
+		_pages[1].get_node("kong" + str(side+1)).visible = details.is_empty()
+		for entry in details:
+			var row = GuiRuntime.build("fsj_xianshimoshi_gerenjifen_item" + ("2" if side == 1 else ""))
+			row.custom_minimum_size = Vector2(472,106)
+			row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			row.set_meta("object_id",int(entry.id))
+			rows.add_child(row)
+			row.get_node("name").set_wnd_text(str(entry.name))
+			row.get_node("w_chengji").set_wnd_text(str(stats.get("countFormat","×%d")) % int(entry.count))
+			var mine := str(int(stats.get("directorID",0)))
+			var enemy := str(int(entry.id))
+			var avatars: Dictionary = stats.get("avatars",{})
+			_avatar(row.get_node("head/touxiang"),avatars.get(mine if side == 0 else enemy,[]))
+			_avatar(row.get_node("head2/touxiang"),avatars.get(enemy if side == 0 else mine,[]))
+			if int(entry.id) == 0:
+				row.get_node("w_chengji").set_wnd_text("失误%d次" % int(entry.count))
+				row.get_node("head" if side == 1 else "head2").hide()
+			row.get_node("head").mouse_filter = Control.MOUSE_FILTER_IGNORE
+			row.get_node("head2").mouse_filter = Control.MOUSE_FILTER_IGNORE
+		rows.get_parent().scroll_vertical = 0
+
 func _fill_results(lines: PackedStringArray) -> void:
 	var stats = JSON.parse_string(str(host.lua.do_string("return SceneMatch.SettlementDataJSON()")))
 	if not stats is Dictionary: return
+	_fill_details(stats)
 	for child in _rows.get_children():
 		_rows.remove_child(child)
 		child.queue_free()
