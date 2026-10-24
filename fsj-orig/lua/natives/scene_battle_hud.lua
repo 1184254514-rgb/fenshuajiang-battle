@@ -92,6 +92,15 @@ function H.Sync()
  local seconds=math.ceil(SceneMatch.GetTimeRemain(sc)/1000)
  gm.m_pWndGameTime:SetWndText(string.format('%02d:%02d',math.floor(seconds/60),seconds%60))
  if not p or not sc.__started or sc.__match_finished then return end
+ local deathTip=gm.m_pWndTyro
+ if deathTip and deathTip.m_wndContent and not network then
+  if not p.__alive then
+   local death=p.__last_death or {};local who=death.killer or ''
+   local reason=death.reason=='body' and '撞到护盾' or death.reason=='territory' and '领地被全部占完' or death.reason=='trail' and '路线被切断' or '死亡原因待核对'
+   deathTip.m_wndContent:SetWndText(reason..(who~='' and (' · '..who) or '')..'\n'..math.ceil(SceneMatch.RespawnRemaining(sc,p)/1000)..'秒后重生')
+   deathTip:ShowWnd(true);gm.__death_notice=true
+  elseif gm.__death_notice then deathTip:ShowWnd(false);gm.__death_notice=nil end
+ end
  local rows=catalog()
  local id=p.__skillID or SceneSkills.selected
  local button=b.m_pBtnSkill

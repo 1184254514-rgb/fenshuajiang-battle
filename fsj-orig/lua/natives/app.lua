@@ -279,6 +279,7 @@ function CGameAppClient:GetSelectMusicID() return self:GetIniFile():GetInteger("
 local ticks = {}
 local tickList = {}          -- registration order (deterministic dispatch)
 function CGameAppClient:Register(tick, nInterval, nIndex)
+	tick.__schedule_generation = (tick.__schedule_generation or 0) + 1
 	tick.__interval = math.max(1, math.floor(tonumber(nInterval) or 1))
 	tick.__elapsed = 0
 	if not ticks[tick] then ticks[tick] = true; tickList[#tickList + 1] = tick end
@@ -298,11 +299,20 @@ function CTick:GetInterval() return self.__interval or 0 end
 local function pump_ticks(dt)
 	local list = tickList
 	tickList = {}
+	local due, seen = {}, {}
 	for _, t in ipairs(list) do
-		if ticks[t] then tickList[#tickList + 1] = t end
+		if ticks[t] and not seen[t] then
+			seen[t] = true
+			tickList[#tickList + 1] = t
+			due[#due + 1] = {t, t.__schedule_generation}
+		end
 	end
-	for _, t in ipairs(tickList) do
-		if t.__reg then
+	-- Callbacks can stop/restart themselves or start another timer. Iterate
+	-- a fixed snapshot: appending to the live queue during a long frame must
+	-- not run a restarted timer endlessly inside this same pump.
+	for _, scheduled in ipairs(due) do
+		local t, generation = scheduled[1], scheduled[2]
+		if t.__reg and t.__schedule_generation == generation then
 			t.__elapsed = (t.__elapsed or 0) + dt
 			local n = 0
 			while t.__reg and t.__elapsed >= t.__interval and n < 4 do
@@ -313,6 +323,7 @@ local function pump_ticks(dt)
 					print("[tick error] " .. tostring(t.m_funTick) .. ": " .. tostring(err))
 					t.__reg = false; ticks[t] = nil
 				end
+				if t.__schedule_generation ~= generation then break end
 			end
 			if n >= 4 then t.__elapsed = 0 end
 		end

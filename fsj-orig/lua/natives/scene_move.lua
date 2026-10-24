@@ -499,7 +499,7 @@ function Move.install(sim)
 				local id = sc.__trail[idx] or 0
 				local victim = id ~= 0 and sc.__players[id] or nil
 				if victim and victim ~= p and victim.__alive then
-					sim.kill_player(sc, victim, p, true)
+					sim.kill_player(sc, victim, p, true, "trail")
 				end
 			end
 			return

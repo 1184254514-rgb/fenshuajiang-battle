@@ -262,12 +262,13 @@ func _render(snapshot: String) -> void:
 		return
 	var respawn_ms: int = int(header[7])
 	if mode == "playing" and respawn_ms > 0:
+		var native_notice: bool = host.lua.do_string("local gm=g_App and g_App:GetGameMain();return gm and gm.__death_notice==true and not (SceneLAN and SceneLAN.active) or false") == true
 		_respawn.text = "%d 秒后重生" % int(ceil(float(respawn_ms) / 1000.0))
 		if header.size() > 11:
 			var causes := {"trail": "路线被切断", "body": "撞到护盾", "territory": "领地被占完"}
 			var cause := str(causes.get(header[10], ""))
 			if not cause.is_empty(): _respawn.text += " · " + cause
-		_respawn.show()
+		_respawn.visible = not native_notice
 	if mode != "finished":
 		return
 	_fill_results(lines)

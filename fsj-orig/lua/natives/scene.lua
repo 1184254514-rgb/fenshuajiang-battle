@@ -305,11 +305,24 @@ end
 
 local function kill_player(sc, victim, killer, collide, reason)
 	if not victim.__alive or sc.__match_finished then return false end
-	if SceneSkills and SceneSkills.BeforeDeath(sc, victim, killer, collide, reason or "trail") == false then return false end
+	reason = reason or "unknown"
+	if SceneSkills and SceneSkills.BeforeDeath(sc, victim, killer, collide, reason) == false then return false end
 	if SceneScore then SceneScore.BeforeKill(sc, victim) end
-	victim.__last_death = {reason=reason or "territory",killer=killer and killer.__nick or "",time=sc.__time,
+	victim.__last_death = {reason=reason,killer=killer and killer.__nick or "",time=sc.__time,
 		x=victim.__x,y=victim.__y,trail=#victim.__trail,area=victim.__manor.count}
 	if victim == sc.m_pDirectorObj then
+		if killer then
+			victim.__last_death.killerX,victim.__last_death.killerY=killer.__x,killer.__y
+			victim.__last_death.headDistance=math.sqrt((killer.__x-victim.__x)^2+(killer.__y-victim.__y)^2)
+			local nearest=math.huge
+			for _,idx in ipairs(victim.__trail) do
+				nearest=math.min(nearest,(killer.__x-(idx%sc.__W+.5)*NODE)^2+(killer.__y-(idx//sc.__W+.5)*NODE)^2)
+			end
+			if nearest<math.huge then victim.__last_death.trailContactDistance=math.sqrt(nearest) end
+		end
+		if SceneSkills and Host and (type(Host.write_text)=="function" or type(Host.write_text)=="userdata") then
+			Host:write_text(sc.__death_report_path or 'user://last_death.json',SceneSkills.EncodeJSON(victim.__last_death))
+		end
 		print("[MATCH DEATH] reason="..victim.__last_death.reason.." killer="..victim.__last_death.killer.." time="..tostring(sc.__time).." trail="..#victim.__trail.." area="..victim.__manor.count)
 	end
 	victim.__alive = false
