@@ -96,7 +96,7 @@ function H.Sync()
  if deathTip and deathTip.m_wndContent and not network then
   if not p.__alive then
    local death=p.__last_death or {};local who=death.killer or ''
-   local reason=death.reason=='body' and '撞到护盾' or death.reason=='territory' and '领地被全部占完' or death.reason=='capture' and '脚下领地被圈占' or death.reason=='trail' and '路线被切断' or '死亡原因待核对'
+   local reason=death.reason=='body' and '撞到护盾' or death.reason=='territory' and '领地被全部占完' or death.reason=='capture' and '脚下领地被圈占' or death.reason=='anchor' and '路线连接点被圈占' or death.reason=='trail' and '路线被切断' or '死亡原因待核对'
    deathTip.m_wndContent:SetWndText(reason..(who~='' and (' · '..who) or '')..'\n'..math.ceil(SceneMatch.RespawnRemaining(sc,p)/1000)..'秒后重生')
    deathTip:ShowWnd(true);gm.__death_notice=true
   elseif gm.__death_notice then deathTip:ShowWnd(false);gm.__death_notice=nil end

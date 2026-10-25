@@ -490,7 +490,7 @@ function Move.install(sim)
 	end
 
 	local previous_enter = sim.enter_node
-	sim.enter_node = function(sc, p, x, y)
+	sim.enter_node = function(sc, p, x, y, previous_idx)
 		ensure(p)
 		local idx = sim.cell(sc, x, y)
 		if p.__a_tracing then
@@ -513,7 +513,7 @@ function Move.install(sim)
 				grade = sc.__val and sc.__val[idx],
 			}
 		end
-		return previous_enter(sc, p, x, y)
+		return previous_enter(sc, p, x, y, previous_idx)
 	end
 
 	local previous_die = sim.a_on_die

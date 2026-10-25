@@ -6,6 +6,7 @@
 -- Constants come from config/constant.txt, config/scene_list.xml, config/ai.txt. Rendering is done by scripts/scene_view.gd.
 
 SceneSim = SceneSim or {}   -- shared hooks for natives/scene_move|score|items.lua (GPT modules A/B/C)
+local Connections = require("natives.scene_connections")
 local NODE = 16                          -- pixels per grid node (constant.txt: "格子=16像素")
 local DIRS = {                           -- eDF_* (Left=1 Right=2 Up=4 Bottom=8) -> dx, dy in world pixels.
 	[1] = { -1, 0 }, [2] = { 1, 0 }, [4] = { 0, 1 }, [8] = { 0, -1 },   -- engine convention: "up" = +depth (away from the camera)
@@ -225,6 +226,7 @@ end
 -- claim the initial square manor around the player and start moving
 function CPlayerClient:StartUp(nEquipID)
 	local sc = self.__scene
+	Connections.Clear(sc, self)
 	local half = math.max(1, (self.__manorWidth // NODE) // 2)
 	local cx, cy = math.floor(self.__x / NODE), math.floor(self.__y / NODE)
 	cx = math.max(half, math.min(sc.__W - half - 1, cx)); cy = math.max(half, math.min(sc.__H - half - 1, cy))
@@ -314,6 +316,8 @@ local function kill_player(sc, victim, killer, collide, reason, contact)
 		victim.__last_death.contactCell = contact.cell
 		victim.__last_death.previousOwner = contact.previousOwner
 		victim.__last_death.source = contact.source
+		victim.__last_death.peerLineCell = contact.peerLineCell
+		victim.__last_death.peerDirection = contact.peerDirection
 	end
 	if victim == sc.m_pDirectorObj then
 		if killer then
@@ -331,6 +335,7 @@ local function kill_player(sc, victim, killer, collide, reason, contact)
 		print("[MATCH DEATH] reason="..victim.__last_death.reason.." killer="..victim.__last_death.killer.." time="..tostring(sc.__time).." trail="..#victim.__trail.." area="..victim.__manor.count)
 	end
 	victim.__alive = false
+	Connections.Clear(sc, victim)
 	if SceneSim.a_on_die then SceneSim.a_on_die(sc, victim) end
 	victim.__deaths = victim.__deaths + 1
 	victim.__killedBy = killer and killer.__nick or ""
@@ -386,11 +391,14 @@ end
 -- APK CManor::AddManorUnit 0x33e580..0x33e5f0: after removing a
 -- foreign manor cell, inspect that manor's registered players and kill a
 -- valid player whose logical head is exactly at the cell being claimed.
--- This is NOT a blanket kill of every head inside the polygon. The separate
--- peer/line-connection branch remains unresolved (see the collision audit).
+-- The earlier native peer-connection branch is evaluated before removing the
+-- old manor cell. Only recorded cross-layer links qualify, not nearby lines.
 local function claim_cell(sc, p, idx, grade, source)
 	local mid, previous = p.__manor.manorID, sc.__owner[idx] or 0
 	if previous == mid then return false end
+	Connections.BeforeClaim(sc, p, idx, source)
+	-- A peer death can clear the old manor, including this very cell.
+	previous = sc.__owner[idx] or 0
 	if previous ~= 0 then
 		local victim = sc.__byManor and sc.__byManor[previous]
 		if not victim then
@@ -417,6 +425,9 @@ local function close_loop(sc, p)
 	local W, H = sc.__W, sc.__H
 	local mid = p.__manor.manorID
 	if SceneScore then SceneScore.BeginCapture(sc, p) end
+	-- Native EnterHome removes the closing line and its cross-layer links
+	-- before transferring the enclosed manor cells. Keep geometry for filling.
+	Connections.Clear(sc, p)
 	-- Everything that the own territory + this trail cut off from the map border becomes ours (also pockets that were
 	-- already enclosed by older territory). Flood "outside" from every map-edge cell over the whole board.
 	local function blocked(idx) return sc.__trail[idx] == p.__objectID or sc.__owner[idx] == mid end
@@ -436,9 +447,8 @@ local function close_loop(sc, p)
 		if y > 0 then push(x, y - 1) end
 		if y < H - 1 then push(x, y + 1) end
 	end
-	-- Keep the existing local distant-route policy while the native peer-unit
-	-- connection branch is unresolved. The proven occupied-home-cell branch is
-	-- handled by claim_cell; actual cuts are handled by enter_node below.
+	-- Merely enclosing a route middle does not create a peer connection. The
+	-- actual departure links and occupied home cells are checked by claim_cell.
 	local bx0, by0, bx1, by1 = 0, 0, W - 1, H - 1
 	-- CManorLine::GetValuation (0x33dd4c): the enclosed area takes the most frequent judged grade 0..3 of the closing
 	-- line, cells still at InitLineRhythmID not counted; ties favour the better (lower) grade
@@ -511,7 +521,7 @@ local function rollback_trail(sc, p, crossing)
 	return true
 end
 
-local function enter_node(sc, p, x, y)
+local function enter_node(sc, p, x, y, previous_idx)
 	local idx = cell(sc, x, y)
 	if not idx then return end
 	local t = sc.__trail[idx]
@@ -534,6 +544,7 @@ local function enter_node(sc, p, x, y)
 			p.__trail[#p.__trail + 1] = idx
 			set_val(sc, idx, const("InitLineRhythmID", 3))
 			set_cell(sc, idx, nil, p.__objectID)
+			if #p.__trail == 1 then Connections.Connect(sc, p, previous_idx, idx) end
 		end
 	end
 end
@@ -575,7 +586,7 @@ local function step_player(sc, p, dtMs)
 		-- the map border is a wall: the painter stops in front of it (no death) until it turns
 		if (nx ~= ox or ny ~= oy) and not cell(sc, nx, ny) then break end
 		p.__x, p.__y = tx, ty
-		if nx ~= ox or ny ~= oy then SceneSim.enter_node(sc, p, nx, ny) end
+		if nx ~= ox or ny ~= oy then SceneSim.enter_node(sc, p, nx, ny, cell(sc, ox, oy)) end
 		if SceneSim.a_after_position then
 			SceneSim.a_after_position(sc, p, tx - dx * s, ty - dy * s, tx, ty)
 		end
@@ -966,6 +977,7 @@ SceneSim.sync_player = sync_player
 SceneSim.enter_node = enter_node
 SceneSim.kill_player = kill_player
 SceneSim.claim_cell = claim_cell
+SceneSim.connections = Connections
 SceneSim.rollback_trail = rollback_trail
 SceneSim.step_player = step_player
 require("natives.scene_move")

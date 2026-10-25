@@ -58,6 +58,7 @@ func _ready() -> void:
 		 sc.__match_respawns={};sc.__firstKillDone=false
 		 for idx=0,sc.__W*sc.__H-1 do SceneSim.set_cell(sc,idx,0,0);SceneSim.set_val(sc,idx,0) end
 		 for _,p in ipairs(sc.__order) do
+		  SceneSim.connections.Clear(sc,p)
 		  p.__alive=true;p.__trail={};p.__trailUnder={};p.__segStart=1
 		  p.__manor.count=0;p.__kills=0;p.__deaths=0;p.__battle_kills={};p.__battle_deaths={}
 		  p.__skill_effects={};p.__skill_extra_speed=0;p.__skill_extra_until=0

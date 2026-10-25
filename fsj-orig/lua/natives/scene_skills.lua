@@ -188,6 +188,7 @@ function S.ConcreteLine(p)
 			count=count+1
 		end
 	end
+	SceneSim.connections.Clear(sc,p)
 	p.__trail, p.__trailUnder, p.__segStart = {},{},1
 	p.__trailRevision=(p.__trailRevision or 0)+1
 	p.__maxCount=math.max(p.__maxCount or 0,p.__manor.count)

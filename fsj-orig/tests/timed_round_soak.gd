@@ -38,12 +38,17 @@ func _ready() -> void:
 				for _,p in ipairs(sc.__order) do
 					assert(not colours[p.__manor.colorID],'duplicate colour'); colours[p.__manor.colorID]=true
 					if p.__alive then
+						if #p.__trail>0 then assert(p.__linePeer,'active route has no departure connection') end
+						if p.__linePeer then assert(SceneSim.connections.IsLive(sc,p.__linePeer),'stale active departure connection') end
 						local visited={}
 						for _,idx in ipairs(p.__trail) do
 							assert(not visited[idx],'repeated trail node after crossing'); visited[idx]=true
 							assert(sc.__trail[idx]==p.__objectID,'trail ownership drift: player='..p.__objectID..' cell='..idx..' trail='..tostring(sc.__trail[idx])..' owner='..tostring(sc.__owner[idx])..' manor='..p.__manor.manorID..' time='..sc.__time)
 						end
 					end
+				end
+				for _,peers in pairs(sc.__manorPeers or {}) do
+					for _,link in pairs(peers) do assert(SceneSim.connections.IsLive(sc,link),'orphan manor peer flag') end
 				end
 			""")
 		if iterations % 10 == 0: await get_tree().process_frame

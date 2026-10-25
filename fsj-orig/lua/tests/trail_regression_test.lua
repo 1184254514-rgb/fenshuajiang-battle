@@ -72,8 +72,8 @@ local ok, failure = xpcall(function()
 	local replacement=assert(sc:AddPlayer(12,{},CVector2f:new(24,24),16))
 	equal(replacement.__manor.colorID,freed,'new identity reuses departed colour')
 
-	-- Closing a distant loop must preserve foreign live routes. Territory
-	-- changes underneath them; only actual contact cuts the line.
+	-- This fixture has no cross-layer departure link at a captured cell.
+	-- Enclosing its foreign route middle preserves both grid layers.
 	sc=scene()
 	local captor=assert(sc:AddPlayer(1,{},CVector2f:new(24,24),16))
 	local victim=assert(sc:AddPlayer(2,{},CVector2f:new(160,160),16))
