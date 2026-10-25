@@ -178,11 +178,9 @@ function S.ConcreteLine(p)
 	for _,idx in ipairs(p.__trail or {}) do
 		if not seen[idx] and sc.__trail[idx] == p.__objectID then
 			seen[idx] = true
-			local previous = sc.__owner[idx] or 0
-			if previous ~= p.__manor.manorID then
-				local other = sc.__byManor and sc.__byManor[previous]
-				if not other then for _,candidate in ipairs(sc.__order or {}) do if candidate.__manor and candidate.__manor.manorID == previous then other=candidate; break end end end
-				if other then other.__manor.count=math.max(0,other.__manor.count-1) end
+			-- CManorLine::Concrete 0x33e778 calls AddManorUnit for each
+			-- line cell, including its occupied-home-cell death condition.
+			if SceneSim.claim_cell(sc,p,idx,0,"concrete") then
 				p.__manor.count=p.__manor.count+1
 			end
 			SceneSim.set_val(sc,idx,0)

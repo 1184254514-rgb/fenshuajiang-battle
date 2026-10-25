@@ -1480,6 +1480,19 @@ func set_player_model(id: int, model_path: String) -> void:
 	_play(actors[id], "run_w")
 
 
+func _finish_death_animation(id: int, instance_id: int, death_serial: int) -> void:
+	# Resolve the actor at callback time. Binding only scalar identities avoids
+	# retaining a freed Node in a lambda when a round is cleared/restarted.
+	var actor: Dictionary = actors.get(id, {})
+	if actor.is_empty() or bool(actor.get("alive", false)):
+		return
+	if int(actor.get("death_serial", 0)) != death_serial:
+		return
+	var target = actor.get("node")
+	if is_instance_valid(target) and target.get_instance_id() == instance_id:
+		target.visible = false
+
+
 func set_player(id: int, x: float, y: float, color_id: int, nick: String, alive: bool, is_director: bool) -> void:
 	super.set_player(id, x, y, color_id, nick, alive, is_director)
 	if world == null:
@@ -1500,8 +1513,10 @@ func set_player(id: int, x: float, y: float, color_id: int, nick: String, alive:
 	elif not alive and a["alive"]:
 		if a["anim"] != null and (a["anim"] as AnimationPlayer).has_animation("fly_die"):
 			_play(a, "fly_die")
+			var death_serial := int(a.get("death_serial", 0)) + 1
+			a["death_serial"] = death_serial
 			get_tree().create_timer((a["anim"] as AnimationPlayer).get_animation("fly_die").length).timeout.connect(
-				func(): if is_instance_valid(node) and not a["alive"]: node.visible = false)
+				_finish_death_animation.bind(id, node.get_instance_id(), death_serial))
 		else:
 			node.visible = false
 	if bool(a["alive"]) != alive:

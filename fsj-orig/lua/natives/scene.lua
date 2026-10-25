@@ -303,13 +303,18 @@ local function scene_sound(path, volume)
 	if a then pcall(a.PlaySound, a, path, volume or 1) end
 end
 
-local function kill_player(sc, victim, killer, collide, reason)
+local function kill_player(sc, victim, killer, collide, reason, contact)
 	if not victim.__alive or sc.__match_finished then return false end
 	reason = reason or "unknown"
 	if SceneSkills and SceneSkills.BeforeDeath(sc, victim, killer, collide, reason) == false then return false end
 	if SceneScore then SceneScore.BeforeKill(sc, victim) end
 	victim.__last_death = {reason=reason,killer=killer and killer.__nick or "",time=sc.__time,
 		x=victim.__x,y=victim.__y,trail=#victim.__trail,area=victim.__manor.count}
+	if contact then
+		victim.__last_death.contactCell = contact.cell
+		victim.__last_death.previousOwner = contact.previousOwner
+		victim.__last_death.source = contact.source
+	end
 	if victim == sc.m_pDirectorObj then
 		if killer then
 			victim.__last_death.killerX,victim.__last_death.killerY=killer.__x,killer.__y
@@ -378,6 +383,36 @@ local function kill_player(sc, victim, killer, collide, reason)
 	return true
 end
 
+-- APK CManor::AddManorUnit 0x33e580..0x33e5f0: after removing a
+-- foreign manor cell, inspect that manor's registered players and kill a
+-- valid player whose logical head is exactly at the cell being claimed.
+-- This is NOT a blanket kill of every head inside the polygon. The separate
+-- peer/line-connection branch remains unresolved (see the collision audit).
+local function claim_cell(sc, p, idx, grade, source)
+	local mid, previous = p.__manor.manorID, sc.__owner[idx] or 0
+	if previous == mid then return false end
+	if previous ~= 0 then
+		local victim = sc.__byManor and sc.__byManor[previous]
+		if not victim then
+			for _, other in ipairs(sc.__order or {}) do
+				if other.__manor.manorID == previous then victim = other; break end
+			end
+		end
+		if victim then
+			victim.__manor.count = math.max(0, victim.__manor.count - 1)
+			if victim ~= p and victim.__alive and victim.__x and victim.__y
+				and cell(sc, math.floor(victim.__x / NODE), math.floor(victim.__y / NODE)) == idx then
+				kill_player(sc, victim, p, false, "capture", {cell=idx,previousOwner=previous,source=source})
+			end
+		end
+	end
+	-- Re-read the trail AFTER death: victim cleanup may have removed it.
+	local foreign = (sc.__trail[idx] or 0) ~= 0 and sc.__trail[idx] ~= p.__objectID
+	if not foreign then set_val(sc, idx, grade) end
+	set_cell(sc, idx, mid, foreign and sc.__trail[idx] or 0)
+	return true
+end
+
 local function close_loop(sc, p)
 	local W, H = sc.__W, sc.__H
 	local mid = p.__manor.manorID
@@ -401,11 +436,9 @@ local function close_loop(sc, p)
 		if y > 0 then push(x, y - 1) end
 		if y < H - 1 then push(x, y + 1) end
 	end
-	-- Territory ownership and live trails are separate layers. Merely enclosing
-	-- a distant line must not kill its owner or erase the path behind its head.
-	-- Actual head/line contact is resolved by enter_node; full loss of territory
-	-- is resolved after applying the capture below. This is the local rule fix
-	-- for deaths with no opponent touching the line.
+	-- Keep the existing local distant-route policy while the native peer-unit
+	-- connection branch is unresolved. The proven occupied-home-cell branch is
+	-- handled by claim_cell; actual cuts are handled by enter_node below.
 	local bx0, by0, bx1, by1 = 0, 0, W - 1, H - 1
 	-- CManorLine::GetValuation (0x33dd4c): the enclosed area takes the most frequent judged grade 0..3 of the closing
 	-- line, cells still at InitLineRhythmID not counted; ties favour the better (lower) grade
@@ -422,26 +455,13 @@ local function close_loop(sc, p)
 		for x = bx0, bx1 do
 			local idx = y * W + x
 			if not outside[idx] and sc.__owner[idx] ~= mid then
-				local prev = sc.__owner[idx]
-				if prev ~= 0 then
-					local victim = sc.__byManor[prev]
-					if victim then victim.__manor.count = victim.__manor.count - 1 end
-				end
-				local foreignTrail=(sc.__trail[idx] or 0)~=0 and sc.__trail[idx]~=p.__objectID
-				if not foreignTrail then set_val(sc, idx, lineVal) end
-				set_cell(sc, idx, mid, foreignTrail and sc.__trail[idx] or 0)
-				gained = gained + 1
+				if claim_cell(sc, p, idx, lineVal, "loop") then gained = gained + 1 end
 			end
 		end
 	end
 	for _, idx in ipairs(p.__trail) do
 		if sc.__owner[idx] ~= mid then
-			local prev = sc.__owner[idx]
-			if prev ~= 0 then
-				local victim = sc.__byManor[prev]
-				if victim then victim.__manor.count = victim.__manor.count - 1 end
-			end
-			set_cell(sc, idx, mid, 0); gained = gained + 1
+			if claim_cell(sc, p, idx, lineVal, "loop") then gained = gained + 1 end
 		else
 			set_cell(sc, idx, nil, 0)
 		end
@@ -945,6 +965,7 @@ SceneSim.set_val = set_val
 SceneSim.sync_player = sync_player
 SceneSim.enter_node = enter_node
 SceneSim.kill_player = kill_player
+SceneSim.claim_cell = claim_cell
 SceneSim.rollback_trail = rollback_trail
 SceneSim.step_player = step_player
 require("natives.scene_move")
