@@ -1064,9 +1064,8 @@ class ModelRig extends RefCounted:
 		var stamp: Vector2 = Vector2(manager.simulation.wall_ms, manager.simulation.time_ms)
 		if stamp == _pose_stamp:
 			return
-		# Original Gamma skeletal effects run at 30 Hz (33ms); throttling
-		# AnimationTree evaluation to ~35 Hz avoids redundant bone rebuilds at 100+ FPS.
-		if _tree != null and absf(manager.simulation.wall_ms - _last_pose_wall_ms) < 28.0:
+		# Keep bone-driven trail/ribbon effects locked at >= 60 Hz (12ms interval).
+		if _tree != null and absf(manager.simulation.wall_ms - _last_pose_wall_ms) < 12.0:
 			return
 		_pose_stamp = stamp
 		_last_pose_wall_ms = manager.simulation.wall_ms

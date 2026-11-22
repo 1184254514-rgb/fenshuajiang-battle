@@ -1553,9 +1553,15 @@ func set_player(id: int, x: float, y: float, color_id: int, nick: String, alive:
 	var dt := (now - int(a.get("t", now))) / 1000.0
 	if dt > 0.0:
 		var v: float = (p - a["last"]).length() / dt
-		a["spd"] = lerpf(float(a.get("spd", 5.0)), v if v < 40.0 else float(a.get("spd", 5.0)), clampf(dt * 8.0, 0.0, 1.0))
+		if v < 40.0:
+			# Snap immediately across the run_w/sprint boundary (~8 cells/s) so the
+			# trailing ribbon reacts on the very next frame after rhythm speedup/slowdown.
+			if v > 8.5 or v < 7.0:
+				a["spd"] = v
+			else:
+				a["spd"] = lerpf(float(a.get("spd", 5.0)), v, clampf(dt * 30.0, 0.0, 1.0))
 		a["t"] = now
-		var spd: float = a["spd"]
+		var spd: float = float(a.get("spd", 5.0))
 		if a["state"] != "fly_die":
 			_play(a, "stand" if spd < 0.5 else ("sprint" if spd > 8.0 else "run_w"))
 	else:
@@ -1617,9 +1623,8 @@ func _update_state_fx(a: Dictionary, anim_name: String) -> void:
 		return
 	var model: Node3D = a.get("model_node")
 	var loop := anim_name in ["run_w", "sprint", "stand", "stand1", "stand2"]
-	var fxn = EffectPlayer3D.spawn_world(node, stem, en, Vector3.ZERO, EQUIP_SCALE / ENGINE_PER_NODE, loop)   # render object scaled by nScale
+	var fxn = EffectPlayer3D.spawn_world(node, stem, en, Vector3.ZERO, EQUIP_SCALE / ENGINE_PER_NODE, loop, model)   # render object scaled by nScale
 	if fxn != null:
-		fxn.attached_model = model
 		a["state_fx"] = fxn
 		fxn.visible = not _is_player_hidden(pid)
 

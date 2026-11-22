@@ -915,23 +915,13 @@ class UnitRuntime extends Node:
 		match type_name:
 			"CPolyTrailProp":
 				_update_trail(at_ms, wall_ms, active_delta)
-				if _world_surface != null and wall_ms - _last_draw_wall_ms < 22.0:
-					if host is Node3D and absf(host.global_transform.basis.determinant()) > 0.000000001:
-						_world_surface.transform = host.global_transform.affine_inverse()
-				else:
-					_last_draw_wall_ms = wall_ms
-					_draw_trail(wall_ms)
+				_draw_trail(wall_ms)
 			"CPolyChainProp":
 				_update_chain(at_ms, wall_ms, active_delta)
 			"CGeometryProp":
 				if _active(at_ms):
 					_update_geometry_uv(active_delta)
-					if _world_surface != null and _world_surface.visible and wall_ms - _last_draw_wall_ms < 22.0:
-						if host is Node3D and absf(host.global_transform.basis.determinant()) > 0.000000001:
-							_world_surface.transform = host.global_transform.affine_inverse()
-					else:
-						_last_draw_wall_ms = wall_ms
-						_draw_geometry()
+					_draw_geometry()
 				else:
 					_hide_surfaces()
 			"CEffectAttachMesh":
@@ -1140,9 +1130,10 @@ class UnitRuntime extends Node:
 				# A stationary emitter refreshes the final sample timestamp.
 				_tail["time"] = wall_ms
 				return
-			# Cap trail pose insertion to ~45 Hz (smoother than the original 30 Hz
-			# engine) so high-FPS frames don't multiply bezier ribbon samples 4x.
-			if wall_ms - _last_pose_wall_ms < 22.0:
+			# Cap straight-line pose insertion at ~80 Hz (12ms) so 200 FPS doesn't
+			# multiply bezier samples, while always inserting immediately on turns.
+			var turned := Vector3(_tail["direction"]).dot(direction) < 0.995
+			if not turned and wall_ms - _last_pose_wall_ms < 12.0:
 				_tail["position"] = _xf.origin
 				_tail["direction"] = direction
 				_tail["time"] = wall_ms

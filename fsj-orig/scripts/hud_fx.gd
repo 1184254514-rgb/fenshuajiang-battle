@@ -476,7 +476,6 @@ class SkillFuseOverlay extends Control:
 	var cd_sec: int = 0
 	var _cast_serial: int = -1
 	var _anim_t: float = 0.0
-	var _instant_fuse_t: float = 0.0
 	var _burst_t: float = 0.0
 	var _ready_flash_t: float = 0.0
 	var _was_cd: bool = false
@@ -499,8 +498,6 @@ class SkillFuseOverlay extends Control:
 		if p_cast_serial > 0 and p_cast_serial != _cast_serial:
 			if _cast_serial >= 0:
 				_burst_t = 0.36
-				if not p_is_active:
-					_instant_fuse_t = 0.52
 			_cast_serial = p_cast_serial
 			changed = true
 		if _was_cd and not p_is_cd:
@@ -508,8 +505,8 @@ class SkillFuseOverlay extends Control:
 			changed = true
 		_was_cd = p_is_cd
 		if (
-			absf(active_ratio - p_active_ratio) > 0.002
-			or absf(cd_ratio - p_cd_ratio) > 0.002
+			absf(active_ratio - p_active_ratio) > 0.001
+			or absf(cd_ratio - p_cd_ratio) > 0.001
 			or is_active != p_is_active
 			or is_cd != p_is_cd
 			or cd_sec != p_cd_sec
@@ -520,7 +517,7 @@ class SkillFuseOverlay extends Control:
 			is_cd = p_is_cd
 			cd_sec = p_cd_sec
 			changed = true
-		var need_anim := is_active or _instant_fuse_t > 0.0 or _burst_t > 0.0 or _ready_flash_t > 0.0
+		var need_anim := (is_cd and cd_ratio > 0.001) or _burst_t > 0.0 or _ready_flash_t > 0.0
 		if need_anim:
 			set_process(true)
 		elif changed:
@@ -529,14 +526,12 @@ class SkillFuseOverlay extends Control:
 
 	func _process(delta: float) -> void:
 		_anim_t += delta
-		if _instant_fuse_t > 0.0:
-			_instant_fuse_t = maxf(0.0, _instant_fuse_t - delta)
 		if _burst_t > 0.0:
 			_burst_t = maxf(0.0, _burst_t - delta)
 		if _ready_flash_t > 0.0:
 			_ready_flash_t = maxf(0.0, _ready_flash_t - delta)
 		queue_redraw()
-		if not is_active and _instant_fuse_t <= 0.0 and _burst_t <= 0.0 and _ready_flash_t <= 0.0:
+		if not (is_cd and cd_ratio > 0.001) and _burst_t <= 0.0 and _ready_flash_t <= 0.0:
 			set_process(false)
 
 	func _draw() -> void:
@@ -548,40 +543,35 @@ class SkillFuseOverlay extends Control:
 		var base_r := minf(w, h) * 0.455
 		var start_a := -PI * 0.5
 
-		# 1. Cooldown translucent dark radial wedge + clean cool rim
+		# 1. Cooldown translucent dark radial wedge + 1:1 synchronized burning fuse ("烧绳")
 		if is_cd and cd_ratio > 0.001:
+			var sweep := TAU * cd_ratio
+			var end_a := start_a + sweep
 			var cd_r := base_r * 0.94
-			var segs := maxi(8, int(ceil(cd_ratio * 36.0)))
+			var segs := maxi(12, int(ceil(cd_ratio * 48.0)))
 			var pts := PackedVector2Array()
 			pts.resize(segs + 2)
 			pts[0] = center
-			var sweep := TAU * cd_ratio
 			for i in range(segs + 1):
 				var a := start_a + sweep * (float(i) / float(segs))
 				pts[i + 1] = center + Vector2(cos(a), sin(a)) * cd_r
 			draw_colored_polygon(pts, Color(0.04, 0.08, 0.16, 0.46))
-			if not is_active and _instant_fuse_t <= 0.0:
-				draw_arc(center, base_r, start_a, start_a + sweep, maxi(12, segs), Color(0.68, 0.88, 1.0, 0.72), 3.0, true)
 
-		# 2. Burning fuse ("烧绳") ring during active skill duration or instant-cast burn
-		var fuse_ratio := active_ratio if is_active else (_instant_fuse_t / 0.52 if _instant_fuse_t > 0.0 else 0.0)
-		if fuse_ratio > 0.005:
+			# Burning fuse arc locked 1:1 to exact remaining cooldown ratio (cd_ratio)
 			var fuse_r := base_r * 1.02
-			var arc_len := TAU * fuse_ratio
-			var end_a := start_a + arc_len
-			var seg_cnt := maxi(16, int(ceil(fuse_ratio * 48.0)))
+			var seg_cnt := maxi(16, segs)
 
 			# Charred rope track underneath
-			draw_arc(center, fuse_r, 0.0, TAU, 48, Color(0.18, 0.09, 0.04, 0.55), 5.5, true)
+			draw_arc(center, fuse_r, 0.0, TAU, 48, Color(0.18, 0.09, 0.04, 0.52), 5.5, true)
 			# Soft outer fire bloom
 			draw_arc(center, fuse_r, start_a, end_a, seg_cnt, Color(1.0, 0.36, 0.04, 0.36), 13.0, true)
 			# Main golden-orange braided burning rope
 			draw_arc(center, fuse_r, start_a, end_a, seg_cnt, Color(1.0, 0.72, 0.16, 0.96), 5.8, true)
 			# White-hot leading segment near the flame tip
-			var hot_span := minf(arc_len, 0.55)
+			var hot_span := minf(sweep, 0.55)
 			draw_arc(center, fuse_r, end_a - hot_span, end_a, maxi(6, int(ceil(hot_span * 12.0))), Color(1.0, 0.96, 0.70, 0.96), 2.8, true)
 
-			# Live sizzling burning ember tip + animated sparks
+			# Live sizzling burning ember tip riding on the exact cooldown leading edge
 			var tip := center + Vector2(cos(end_a), sin(end_a)) * fuse_r
 			var pulse := 0.85 + 0.18 * sin(_anim_t * 32.0)
 			draw_circle(tip, 14.0 * pulse, Color(1.0, 0.42, 0.04, 0.34))
@@ -601,19 +591,19 @@ class SkillFuseOverlay extends Control:
 				var sp_col := Color(1.0, lerpf(0.95, 0.38, phase), lerpf(0.65, 0.05, phase), sp_alpha)
 				draw_circle(sp_pos, sp_r, sp_col)
 
-		# 3. Cast activation burst ring
+		# 2. Cast activation burst ring
 		if _burst_t > 0.0:
 			var p := 1.0 - (_burst_t / 0.36)
 			var br := base_r * lerpf(0.85, 1.24, p)
 			draw_arc(center, br, 0.0, TAU, 40, Color(1.0, 0.88, 0.35, (1.0 - p) * 0.85), lerpf(6.0, 1.5, p), true)
 
-		# 4. Cooldown-complete ready shimmer ring
+		# 3. Cooldown-complete ready shimmer ring
 		if _ready_flash_t > 0.0:
 			var rp := 1.0 - (_ready_flash_t / 0.42)
 			var rr := base_r * lerpf(0.92, 1.22, rp)
 			draw_arc(center, rr, 0.0, TAU, 40, Color(0.55, 0.95, 1.0, (1.0 - rp) * 0.9), lerpf(5.5, 1.5, rp), true)
 
-		# 5. Crisp outlined countdown number when cooling down
+		# 4. Crisp outlined countdown number when cooling down
 		if is_cd and cd_sec > 0:
 			var txt := str(cd_sec)
 			var font: Font = ThemeDB.fallback_font

@@ -37,7 +37,8 @@ static func spawn_world(
 	effect_name: String,
 	position: Vector3,
 	units_per_engine := 1.0 / 64.0,
-	loop := false
+	loop := false,
+	p_attached_model: Node3D = null
 ) -> Node3D:
 	if not is_instance_valid(parent):
 		push_error("EffectPlayer3D.spawn_world: parent is invalid.")
@@ -54,6 +55,7 @@ static func spawn_world(
 	player.position = position
 	player.units_per_engine = conversion
 	player._stem = eft_stem + "/" + effect_name
+	player.attached_model = p_attached_model
 	player._simulation = Eval.new(definition, bool(loop))
 	parent.add_child(player)
 	return player

@@ -175,22 +175,27 @@ function H.Sync()
  set_show(button, true)
  local cooldown=p:GetSkillWaitTime(id)
  local now_ms = sc.__time or 0
- local cast_life = tonumber(p.__skill_cast_lifetime) or 0
- local active_end = tonumber(p.__skill_active_end) or 0
- local active_rem = (p.__alive and cast_life > 0 and active_end > now_ms) and (active_end - now_ms) or 0
- local is_active = active_rem > 0
- local active_ratio = is_active and (active_rem / cast_life) or 0
- local cd_total = math.max(1, tonumber(p.__skill_cd_total) or cooldown)
  local is_cd = cooldown > 0
+ if is_cd then
+  local recorded = tonumber(p.__skill_cd_total) or 0
+  if recorded <= 0 or cooldown > recorded then
+   button.__bh_cd_total = math.max(button.__bh_cd_total or 0, cooldown)
+  else
+   button.__bh_cd_total = recorded
+  end
+ else
+  button.__bh_cd_total = 0
+ end
+ local cd_total = math.max(1, button.__bh_cd_total or 1)
  local cd_ratio = is_cd and math.min(1, cooldown / cd_total) or 0
  local cd_sec = is_cd and math.ceil(cooldown / 1000) or 0
  set_enable(button, p.__alive and cooldown<=0)
- -- Let SkillFuseOverlay draw the crisp outlined countdown + burning fuse ring cleanly;
+ -- Let SkillFuseOverlay draw the 1:1 cooldown-synchronized burning fuse + countdown cleanly;
  -- keep native button text empty so digits never double-draw.
  local hud_fx = Host and Host.scene_view and Host.scene_view.hud_fx
  if hud_fx and button.__node then
   set_text(button, '')
-  hud_fx:set_skill_fuse(button.__node, active_ratio, cd_ratio, is_active, is_cd, cd_sec, tonumber(p.__skill_cast_serial) or 0)
+  hud_fx:set_skill_fuse(button.__node, cd_ratio, cd_ratio, is_cd, is_cd, cd_sec, tonumber(p.__skill_cast_serial) or 0)
   if button.__bh_was_cd and not is_cd and p.__alive then
    button:AddEffect('fx/cfg/cf_cd.eft', 'fx/loop', 'cf_cd', 0)
   end
