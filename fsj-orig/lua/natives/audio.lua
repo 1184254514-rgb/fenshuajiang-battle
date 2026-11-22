@@ -572,6 +572,10 @@ function CGameAppClient:SetSelectMusicID(value)
 	local id = positive_id(value)
 	if not id then return false end
 	self:GetIniFile():WriteInteger("Setting", "MusicID", id)
+	if FakeWorld and type(FakeWorld.profile) == "table" then
+		FakeWorld.profile.curMusic = id
+		if type(FakeWorld.Save) == "function" then pcall(FakeWorld.Save) end
+	end
 	return true
 end
 

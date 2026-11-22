@@ -96,25 +96,33 @@ function Move.install(sim)
 	end
 
 	local function property(p, id)
-		local ok, value = pcall(p.GetSimple32Property, p, id)
-		return ok and number(value, 0) or 0
+		local fn = p.GetSimple32Property
+		if type(fn) == "function" then
+			return number(fn(p, id), 0)
+		end
+		return 0
 	end
 
 	local function add_speed(p)
-		local ok, value = pcall(p.GetAddSpeed, p)
-		return ok and trunc(number(value, 0)) or 0
+		local fn = p.GetAddSpeed
+		if type(fn) == "function" then
+			return trunc(number(fn(p), 0))
+		end
+		return 0
 	end
 
+	local level_cfg_inst
 	if type(CPlayerClient.GetAddSpeed) ~= "function" then
 		function CPlayerClient:GetAddSpeed()
 			-- M02: retained fallback. The referenced native body is absent.
 			local levelBonus = 0
-			local cfg = CPlayerLevelConfig
-			if cfg then
-				local ok, value = pcall(function()
-					return cfg:Inst():GetAddSpeed(property(self, 7))
-				end)
-				if ok then levelBonus = number(value, 0) end
+			local cfg = level_cfg_inst
+			if not cfg and CPlayerLevelConfig and CPlayerLevelConfig.Inst then
+				cfg = CPlayerLevelConfig:Inst()
+				level_cfg_inst = cfg
+			end
+			if cfg and cfg.GetAddSpeed then
+				levelBonus = number(cfg:GetAddSpeed(property(self, 7)), 0)
 			end
 			return trunc(levelBonus)
 				+ trunc(constant("HighSpeed", 180) * property(self, 8) / 10000)
@@ -273,15 +281,20 @@ function Move.install(sim)
 		return true
 	end
 
+	local _move_state_view = nil
+	local _move_state_fn = false
 	local function publish(p)
 		ensure(p)
-		local available = eligible(p)
 		local view = Host and Host.scene_view
 		if not view or p.__objectID == nil then return end
-
-		local ok, method = pcall(function() return view.set_player_move_state end)
-		if ok and type(method) == "function" then
-			method(view, p.__objectID, p.__a_speedup, p.__a_tracing,
+		if view ~= _move_state_view then
+			_move_state_view = view
+			local ok, method = pcall(function() return view.set_player_move_state end)
+			_move_state_fn = (ok and type(method) == "function") and method or false
+		end
+		if _move_state_fn then
+			local available = eligible(p)
+			_move_state_fn(view, p.__objectID, p.__a_speedup, p.__a_tracing,
 				p.__a_trace_cd_ms, p.__a_trace_cd_total_ms, available)
 		end
 	end

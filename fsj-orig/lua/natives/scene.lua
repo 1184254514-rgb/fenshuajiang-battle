@@ -13,11 +13,19 @@ local DIRS = {                           -- eDF_* (Left=1 Right=2 Up=4 Bottom=8)
 }
 local OPPOSITE = { [1] = 2, [2] = 1, [4] = 8, [8] = 4 }
 
+local CONST_CACHE = {}
 local function const(name, default)
+	local cached = CONST_CACHE[name]
+	if cached ~= nil then return cached end
 	local c = CSnakeConstant and CSnakeConstant:Inst()
 	local f = c and c["Get" .. name]
-	local ok, v = pcall(function() return f and f(c) end)
-	if ok and type(v) == "number" then return v end
+	if type(f) == "function" then
+		local ok, v = pcall(f, c)
+		if ok and type(v) == "number" then
+			CONST_CACHE[name] = v
+			return v
+		end
+	end
 	return default
 end
 
@@ -155,10 +163,24 @@ local function cell(scene, x, y)
 	return y * scene.__W + x
 end
 
+local function expand_manor_bbox(scene, mid, idx)
+	local mp = scene.__byManor and scene.__byManor[mid]
+	if not mp or not mp.__manor then return end
+	local m = mp.__manor
+	local x, y = idx % scene.__W, idx // scene.__W
+	if m.__minX == nil or x < m.__minX then m.__minX = x end
+	if m.__maxX == nil or x > m.__maxX then m.__maxX = x end
+	if m.__minY == nil or y < m.__minY then m.__minY = y end
+	if m.__maxY == nil or y > m.__maxY then m.__maxY = y end
+end
+
 local function set_cell(scene, idx, owner, trail)
 	local o, t = scene.__owner[idx], scene.__trail[idx]
 	if owner ~= nil then scene.__owner[idx] = owner end
 	if trail ~= nil then scene.__trail[idx] = trail end
+	if owner ~= nil and owner ~= 0 and o ~= owner then
+		expand_manor_bbox(scene, owner, idx)
+	end
 	if SceneScore and SceneScore.Enabled(scene) and o ~= scene.__owner[idx] then
 		SceneScore.OnOwnerChanged(scene, idx, o, scene.__owner[idx])
 	end
@@ -212,6 +234,8 @@ function CGameScene:AddPlayer(nObjectID, ctxBuf, posPixel, manorWidth)
 	p.__rhythm = { maxCombo = 0, total = 0, count = { 0, 0, 0, 0 }, combo = 0 }
 	local manorID = self.__nextManorID; self.__nextManorID = manorID + 1
 	p.__manor = setmetatable({ manorID = manorID, colorID = colour, count = 0 }, CManor)
+	self.__byManor = self.__byManor or {}
+	self.__byManor[manorID] = p
 	Host.scene_view:set_manor_colour(manorID, colour)
 	p.__x, p.__y = posPixel:x() + 0.0, posPixel:y() + 0.0
 	p.__manorWidth = manorWidth or 80
@@ -348,9 +372,27 @@ local function kill_player(sc, victim, killer, collide, reason, contact)
 	victim.__trailRevision = (victim.__trailRevision or 0) + 1
 	victim.__segStart = 1
 	local mid = victim.__manor.manorID
-	for idx = 0, sc.__W * sc.__H - 1 do
-		if sc.__owner[idx] == mid then set_cell(sc, idx, 0, nil) end
+	local m = victim.__manor
+	local x0 = m.__minX and math.max(0, m.__minX) or 0
+	local x1 = m.__maxX and math.min(sc.__W - 1, m.__maxX) or (sc.__W - 1)
+	local y0 = m.__minY and math.max(0, m.__minY) or 0
+	local y1 = m.__maxY and math.min(sc.__H - 1, m.__maxY) or (sc.__H - 1)
+	local W = sc.__W
+	local sc_owner = sc.__owner
+	if m.__minX ~= nil then
+		for y = y0, y1 do
+			local row = y * W
+			for x = x0, x1 do
+				local idx = row + x
+				if sc_owner[idx] == mid then set_cell(sc, idx, 0, nil) end
+			end
+		end
+	else
+		for idx = 0, W * sc.__H - 1 do
+			if sc_owner[idx] == mid then set_cell(sc, idx, 0, nil) end
+		end
 	end
+	m.__minX, m.__maxX, m.__minY, m.__maxY = nil, nil, nil, nil
 	victim.__manor.count = 0
 	if SceneItemsC then SceneItemsC.OnPlayerDeath(sc, victim, killer, collide) end
 	sync_player(victim)
@@ -429,27 +471,81 @@ local function close_loop(sc, p)
 	-- before transferring the enclosed manor cells. Keep geometry for filling.
 	Connections.Clear(sc, p)
 	-- Everything that the own territory + this trail cut off from the map border becomes ours (also pockets that were
-	-- already enclosed by older territory). Flood "outside" from every map-edge cell over the whole board.
-	local function blocked(idx) return sc.__trail[idx] == p.__objectID or sc.__owner[idx] == mid end
+	-- already enclosed by older territory). Flood "outside" within the 1-cell-padded bounding box of manor + trail
+	-- (mathematically identical to full-board flood since every cell outside the box is unblocked and reaches the border).
+	local owner_arr = sc.__owner
+	local trail_arr = sc.__trail
+	local pid = p.__objectID
+	local m = p.__manor
+	local minX, maxX, minY, maxY = m.__minX, m.__maxX, m.__minY, m.__maxY
+	if minX == nil or maxX == nil or minY == nil or maxY == nil then
+		minX, maxX, minY, maxY = 0, W - 1, 0, H - 1
+	else
+		for _, idx in ipairs(p.__trail) do
+			local tx, ty = idx % W, idx // W
+			if tx < minX then minX = tx end
+			if tx > maxX then maxX = tx end
+			if ty < minY then minY = ty end
+			if ty > maxY then maxY = ty end
+		end
+	end
+	local bx0 = minX > 0 and (minX - 1) or 0
+	local bx1 = maxX < W - 1 and (maxX + 1) or (W - 1)
+	local by0 = minY > 0 and (minY - 1) or 0
+	local by1 = maxY < H - 1 and (maxY + 1) or (H - 1)
 	local outside = {}
 	local stack = {}
-	local function push(x, y)
-		local idx = y * W + x
-		if not outside[idx] and not blocked(idx) then outside[idx] = true; stack[#stack + 1] = idx end
+	local top = 0
+	for x = bx0, bx1 do
+		local i0 = by0 * W + x
+		if not outside[i0] and trail_arr[i0] ~= pid and owner_arr[i0] ~= mid then
+			outside[i0] = true; top = top + 1; stack[top] = i0
+		end
+		local i1 = by1 * W + x
+		if not outside[i1] and trail_arr[i1] ~= pid and owner_arr[i1] ~= mid then
+			outside[i1] = true; top = top + 1; stack[top] = i1
+		end
 	end
-	for x = 0, W - 1 do push(x, 0); push(x, H - 1) end
-	for y = 0, H - 1 do push(0, y); push(W - 1, y) end
-	while #stack > 0 do
-		local idx = stack[#stack]; stack[#stack] = nil
+	for y = by0, by1 do
+		local i0 = y * W + bx0
+		if not outside[i0] and trail_arr[i0] ~= pid and owner_arr[i0] ~= mid then
+			outside[i0] = true; top = top + 1; stack[top] = i0
+		end
+		local i1 = y * W + bx1
+		if not outside[i1] and trail_arr[i1] ~= pid and owner_arr[i1] ~= mid then
+			outside[i1] = true; top = top + 1; stack[top] = i1
+		end
+	end
+	while top > 0 do
+		local idx = stack[top]; stack[top] = nil; top = top - 1
 		local x, y = idx % W, idx // W
-		if x > 0 then push(x - 1, y) end
-		if x < W - 1 then push(x + 1, y) end
-		if y > 0 then push(x, y - 1) end
-		if y < H - 1 then push(x, y + 1) end
+		if x > bx0 then
+			local ni = idx - 1
+			if not outside[ni] and trail_arr[ni] ~= pid and owner_arr[ni] ~= mid then
+				outside[ni] = true; top = top + 1; stack[top] = ni
+			end
+		end
+		if x < bx1 then
+			local ni = idx + 1
+			if not outside[ni] and trail_arr[ni] ~= pid and owner_arr[ni] ~= mid then
+				outside[ni] = true; top = top + 1; stack[top] = ni
+			end
+		end
+		if y > by0 then
+			local ni = idx - W
+			if not outside[ni] and trail_arr[ni] ~= pid and owner_arr[ni] ~= mid then
+				outside[ni] = true; top = top + 1; stack[top] = ni
+			end
+		end
+		if y < by1 then
+			local ni = idx + W
+			if not outside[ni] and trail_arr[ni] ~= pid and owner_arr[ni] ~= mid then
+				outside[ni] = true; top = top + 1; stack[top] = ni
+			end
+		end
 	end
 	-- Merely enclosing a route middle does not create a peer connection. The
 	-- actual departure links and occupied home cells are checked by claim_cell.
-	local bx0, by0, bx1, by1 = 0, 0, W - 1, H - 1
 	-- CManorLine::GetValuation (0x33dd4c): the enclosed area takes the most frequent judged grade 0..3 of the closing
 	-- line, cells still at InitLineRhythmID not counted; ties favour the better (lower) grade
 	local initLine = const("InitLineRhythmID", 3)
@@ -862,6 +958,7 @@ function CGameAppClient:SwitchStart()
 	local gm = self:GetGameMain()
 	if gm then gm:ShowWnd(false) end
 	self:GetGameStart():ShowWnd(true)
+	if self.PlayBGMusic then pcall(self.PlayBGMusic, self) end
 end
 
 function CGameAppClient:GetScene() return self.__scene end

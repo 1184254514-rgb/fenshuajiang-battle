@@ -367,10 +367,10 @@ end
 local function defaults()
 	local now = os.time()
 	local day_key = os.date("%Y-%m-%d", now)
-	local music_id = 1
+	local music_id = 121
 	if g_App then
 		local selected = safe_call(g_App, "GetSelectMusicID")
-		if type(selected) == "number" and selected > 0 then
+		if type(selected) == "number" and selected >= 100 then
 			music_id = selected
 		end
 	end
@@ -384,24 +384,25 @@ local function defaults()
 		stars = 0,
 		curSkin = 1,
 		curMusic = music_id,
-		curSkill = 0,
+		curSkill = 3,
 		renameNum = 0,
 		resources = {
 			gold = 5000,
 			diamond = 100,
-			rainbowGold = 20,
+			rainbowGold = 500,
+			skillGold = 500,
 			presentDiamond = 0,
 			fragment = 0,
 		},
 		owned = {
 			equipment = { 1 },
-			music = { music_id },
+			music = { 121, 131, 151 },
 			skins = { 1 },
 			battleFaces = {},
 			rhythmNoticeBars = {},
 		},
 		skillLevels = {},
-		passiveSkills = {},
+		passiveSkills = { 101, 104, 105 },
 		treasureBoxes = {},
 		settings = {},
 		scores = {
@@ -410,9 +411,9 @@ local function defaults()
 			team = 0,
 			race = 0,
 		},
-		-- offline: team mode counts as unlocked (eFE_GetTeamModeOpenPrize = 3) so the skill page opens; the original
-		-- unlock needs limit-mode points, and limit mode is not playable yet (Claude, user request 2026-10-19)
-		firstEvents = { ["3"] = 1 },
+		-- offline: team mode counts as unlocked (eFE_GetTeamModeOpenPrize = 3) so the skill page opens,
+		-- and first-time skill guide popup (eFE_ShowSkillDirections = 9) is marked seen (still accessible via '?').
+		firstEvents = { ["3"] = 1, ["9"] = 1 },
 		daily = {
 			dayKey = day_key,
 			signIn = false,
@@ -468,6 +469,16 @@ local function ensure_profile()
 		end
 	end
 	if p.firstEvents["3"] == nil and p.firstEvents[3] == nil then p.firstEvents["3"] = 1 end   -- see default profile
+	if p.firstEvents["9"] == nil and p.firstEvents[9] == nil then p.firstEvents["9"] = 1 end
+	if number(p.curSkill, 0) <= 0 then p.curSkill = 3 end
+	if number(p.curMusic, 0) < 100 then p.curMusic = 121 end
+	if type(p.owned.music) == "table" then
+		local have = {}
+		for _, v in ipairs(p.owned.music) do have[math.floor(tonumber(v) or 0)] = true end
+		for _, base_id in ipairs({ 121, 131, 151 }) do
+			if not have[base_id] then p.owned.music[#p.owned.music + 1] = base_id end
+		end
+	end
 	for _, key in ipairs({ "equipment", "music", "skins", "battleFaces", "rhythmNoticeBars" }) do
 		if type(p.owned[key]) ~= "table" then
 			p.owned[key] = {}
@@ -550,9 +561,15 @@ local function dispatch_event(db, name, params)
 	if not db or type(db.CreateEvent) ~= "function" or type(db.DispatchEvent) ~= "function" then
 		return
 	end
+	if db.m_nDispatchDepth == nil then
+		db.m_nDispatchDepth = 0
+	end
 	local ok, event = pcall(db.CreateEvent, db, name, db, params or {})
 	if ok and event then
-		pcall(db.DispatchEvent, db, event)
+		local ok2, err = pcall(db.DispatchEvent, db, event)
+		if not ok2 then
+			print("[FakeWorld] DispatchEvent error (" .. tostring(name) .. "): " .. tostring(err))
+		end
 	end
 end
 
@@ -609,7 +626,8 @@ local function set_data(block, index, new_value)
 	if not block or type(block.SetData) ~= "function" then
 		return false
 	end
-	local ok = pcall(block.SetData, block, index, new_value)
+	-- CPlayerDBMember blocks all define SetData(value, index).
+	local ok = pcall(block.SetData, block, new_value, index)
 	return ok
 end
 
@@ -655,20 +673,24 @@ local function fill_list_block(db, block_name_value, list, fallback_count)
 	for i = 0, count - 1 do
 		set_data(block, i, 0)
 	end
-	for i, id in ipairs(clean_id_list(list)) do
+	local cleaned = clean_id_list(list)
+	for i, id in ipairs(cleaned) do
 		local slot = i - 1
 		if slot < count then
 			set_data(block, slot, id)
 		end
 	end
+	if type(block.SetDataCount) == "function" then
+		pcall(block.SetDataCount, block, math.min(#cleaned, count))
+	end
 end
 
 local resource_defs = {
 	{ "Gold", "gold", 0 },
-	{ "Diamond", "diamond", 1 },
-	{ "RainbowGold", "rainbowGold", 2 },
-	{ "PresentDiamond", "presentDiamond", 3 },
-	{ "Fragment", "fragment", 4 },
+	{ "RainbowGold", "rainbowGold", 1 },
+	{ "SkillGold", "skillGold", 2 },
+	{ "Diamond", "diamond", 3 },
+	{ "PresentDiamond", "presentDiamond", 4 },
 }
 
 local function resource_index_by_name(resource_name)
@@ -735,24 +757,33 @@ end
 
 local function set_treasure_box_block(db, profile)
 	local block = value(db, "m_TreasureBoxData")
-	if not block or type(block.SetData) ~= "function" then
+	if not block or type(block.GetData) ~= "function" then
 		return
 	end
 	local max_count = get_data_max(block, 6)
+	local count = 0
 	for i = 0, max_count - 1 do
 		local box = profile.treasureBoxes[i + 1]
-		if box then
-			local record = {
-				m_nTreasureBoxID = number(box.id, 0),
-				m_nTreasureBoxGetTime = number(box.getTime, 0),
-				m_nGetTime = number(box.getTime, 0),
-				m_nPosIndex = number(box.posIndex, i),
-				m_nTreasureBoxUnlockTime = number(box.unlockTime, 0),
-			}
-			set_data(block, i, record)
-		else
-			set_data(block, i, {})
+		local rec = block:GetData(i)
+		if rec then
+			if box then
+				count = count + 1
+				pcall(rec.SetTreasureBoxID, rec, number(box.id, 0))
+				pcall(rec.SetGetTime, rec, number(box.getTime, 0))
+				pcall(rec.SetUnlockTime, rec, number(box.unlockTime, 0))
+				pcall(rec.SetStatus, rec, number(box.status, 0))
+				pcall(rec.SetType, rec, number(box.type, 0))
+			else
+				pcall(rec.SetTreasureBoxID, rec, 0)
+				pcall(rec.SetGetTime, rec, 0)
+				pcall(rec.SetUnlockTime, rec, 0)
+				pcall(rec.SetStatus, rec, 0)
+				pcall(rec.SetType, rec, 0)
+			end
 		end
+	end
+	if type(block.SetDataCount) == "function" then
+		pcall(block.SetDataCount, block, count)
 	end
 end
 
@@ -782,7 +813,17 @@ local function skill_state(profile, id, row, states)
 	local key = tostring(id)
 	local level = number(profile.skillLevels[key], 0)
 	local st = profile.skillStates and profile.skillStates[key]
-	if st == nil then st = number(row.nInitState, 0) end
+	if st == nil then
+		-- Offline: make all playable shown active (1..7) and passive skills usable at Lv.1
+		-- so the original CSkillDevelopWnd lets players equip & upgrade all skills offline.
+		local shown = number(row.nShow, 0) == 1
+		local kind = number(row.nSkillType, 0)
+		if shown and ((kind == 1 and id >= 1 and id <= 7) or kind == 2) then
+			st = 2
+		else
+			st = number(row.nInitState, 0)
+		end
+	end
 	st = number(st, 0)
 	if st >= 2 then
 		if level < 1 then level = 1 end
@@ -833,6 +874,117 @@ local function set_skill_block(db, profile)
 	local idx = {}
 	for i = 1, #ids do idx[i] = i - 1 end
 	notify_block(db, block, "m_DBSkillData", idx)
+end
+
+local function max_passive_slots()
+	local n = 3
+	if CSnakeConstant and type(CSnakeConstant.Inst) == "function" then
+		local ok, v = pcall(function() return CSnakeConstant:Inst():GetPassvieSkillNum() end)
+		if ok and tonumber(v) and tonumber(v) > 0 then n = math.floor(tonumber(v)) end
+	end
+	return n
+end
+
+local function normalize_passive_list(profile)
+	local src = profile.passiveSkills
+	local out, seen = {}, {}
+	local limit = max_passive_slots()
+	if type(src) == "table" then
+		if #src > 0 then
+			for _, v in ipairs(src) do
+				local id = tonumber(v)
+				if id and id > 0 and not seen[id] and #out < limit then
+					seen[id] = true
+					out[#out + 1] = math.floor(id)
+				end
+			end
+		else
+			local keys = {}
+			for k, v in pairs(src) do
+				local id = tonumber(k)
+				if v and id and id > 0 then keys[#keys + 1] = math.floor(id) end
+			end
+			table.sort(keys)
+			for _, id in ipairs(keys) do
+				if not seen[id] and #out < limit then
+					seen[id] = true
+					out[#out + 1] = id
+				end
+			end
+		end
+	end
+	if #out == 0 and not profile.passiveSkillsCustomized then
+		out = { 101, 104, 105 }
+	end
+	profile.passiveSkills = out
+	return out
+end
+
+local function set_first_event_block(db, profile)
+	local first_event = value(db, "m_FirstEvent")
+	if not first_event then
+		return
+	end
+	local count = get_data_max(first_event, 32)
+	local words = {}
+	for i = 0, count - 1 do
+		words[i] = 0
+	end
+	for k, v in pairs(profile.firstEvents or {}) do
+		local bit = tonumber(k)
+		if bit and bit >= 0 and number(v, 0) ~= 0 then
+			local slot = math.floor(bit / 32)
+			if slot < count then
+				words[slot] = BitOr(words[slot] or 0, LeftShift(1, bit % 32))
+			end
+		end
+	end
+	for i = 0, count - 1 do
+		set_data(first_event, i, words[i] or 0)
+	end
+	if type(first_event.SetDataCount) == "function" then
+		pcall(first_event.SetDataCount, first_event, count)
+	end
+end
+
+local function set_passive_block(db, profile, notify)
+	local passive = value(db, "m_PassiveSkill")
+	local list = normalize_passive_list(profile)
+	if not passive then
+		return list
+	end
+	local count = get_data_max(passive, 5)
+	local changed = {}
+	for i = 0, count - 1 do
+		set_data(passive, i, list[i + 1] or 0)
+		changed[#changed + 1] = i
+	end
+	if type(passive.SetDataCount) == "function" then
+		pcall(passive.SetDataCount, passive, #list)
+	end
+	if notify then
+		notify_block(db, passive, "m_PassiveSkill", changed)
+	end
+	return list
+end
+
+local function sync_scene_skills(profile)
+	if not SceneSkills then return end
+	local active_id = number(profile.curSkill, 3)
+	if active_id > 0 and type(SceneSkills.SetSelected) == "function" then
+		SceneSkills.SetSelected(active_id, 1)
+	end
+	local list = normalize_passive_list(profile)
+	if type(SceneSkills.SetPassive) == "function" then
+		for slot = 1, 3 do
+			SceneSkills.SetPassive(slot, 0, 1)
+		end
+		for slot = 1, 3 do
+			if list[slot] then
+				SceneSkills.SetPassive(slot, list[slot], 1)
+			end
+		end
+	end
 end
 
 function FakeWorld.FillPlayerDB(db, profile)
@@ -905,13 +1057,7 @@ function FakeWorld.FillPlayerDB(db, profile)
 		end
 	end
 
-	local first_event = value(db, "m_FirstEvent")
-	if first_event then
-		local count = get_data_max(first_event, 32)
-		for i = 0, count - 1 do
-			set_data(first_event, i, number(profile.firstEvents[tostring(i)] or profile.firstEvents[i], 0))
-		end
-	end
+	set_first_event_block(db, profile)
 
 	local race = value(db, "m_RaceScore")
 	if race then
@@ -929,21 +1075,14 @@ function FakeWorld.FillPlayerDB(db, profile)
 		end
 	end
 
-	local passive = value(db, "m_PassiveSkill")
-	if passive then
-		for skill_id, unlocked in pairs(profile.passiveSkills) do
-			if unlocked then
-				local id = tonumber(skill_id)
-				if id then
-					set_data(passive, math.max(0, math.floor(id) - 1), math.floor(id))
-				end
-			end
-		end
-	end
-
+	set_passive_block(db, profile, false)
 	fill_resource_block(db, profile)
 	set_treasure_box_block(db, profile)
 	set_skill_block(db, profile)
+	sync_scene_skills(profile)
+	if g_App and type(g_App.SetSelectMusicID) == "function" then
+		pcall(g_App.SetSelectMusicID, g_App, number(profile.curMusic, 121))
+	end
 end
 
 local function account_id()
@@ -971,6 +1110,9 @@ H.CValidateClient = function(conn, msg)
 	end
 	profile.accountID = number(profile.accountID, 10001)
 	local db = get_main_db()
+	if db and db.m_nDispatchDepth == nil then
+		db.m_nDispatchDepth = 0
+	end
 	if db then
 		db.InitFromCompress = function() end
 		FakeWorld.FillPlayerDB(db, profile)
@@ -1082,6 +1224,9 @@ local function add_owned(profile, db, key, id, block_name_value, max_count)
 		local slot = #list - 1
 		if slot < get_data_max(block, max_count) then
 			set_data(block, slot, id)
+			if type(block.SetDataCount) == "function" then
+				pcall(block.SetDataCount, block, #list)
+			end
 			notify_block(db, block, block_name_value, { slot })
 		end
 	end
@@ -1109,6 +1254,9 @@ H.CRename = function(conn, msg)
 	profile.nickname = nickname
 	profile.renameNum = number(profile.renameNum, 0) + 1
 	local db = get_main_db()
+	if db and db.m_nDispatchDepth == nil then
+		db.m_nDispatchDepth = 0
+	end
 	set_member(db, "m_CharBaseData", "NickName", nickname)
 	set_member(db, "m_CharBaseData", "RenameNum", profile.renameNum)
 	FakeWorld.Save()
@@ -1143,6 +1291,9 @@ H.CUsingSkin = function(conn, msg)
 	if id > 0 then
 		profile.curSkin = id
 		local db = get_main_db()
+	if db and db.m_nDispatchDepth == nil then
+		db.m_nDispatchDepth = 0
+	end
 		set_member(db, "m_CharBaseData", "CurEquipID", id)
 		FakeWorld.Save()
 	end
@@ -1152,6 +1303,9 @@ H.CBuySkin = function(conn, msg)
 	local profile = ensure_profile()
 	local id = message_id(msg, "m_nSkinID", "nSkinID")
 	local db = get_main_db()
+	if db and db.m_nDispatchDepth == nil then
+		db.m_nDispatchDepth = 0
+	end
 	local success = id > 0 and pay_for(profile, db, "skin", id)
 	if success then
 		add_owned(profile, db, "skins", id, "m_HaveEquip", 256)
@@ -1165,6 +1319,9 @@ H.CBuyMusic = function(conn, msg)
 	local profile = ensure_profile()
 	local id = message_id(msg, "m_nMusicID", "nMusicID")
 	local db = get_main_db()
+	if db and db.m_nDispatchDepth == nil then
+		db.m_nDispatchDepth = 0
+	end
 	local success = id > 0 and pay_for(profile, db, "music", id)
 	if success then
 		add_owned(profile, db, "music", id, "m_HaveMusic", 1024)
@@ -1178,6 +1335,9 @@ H.CBuyBattleFace = function(conn, msg)
 	local profile = ensure_profile()
 	local id = message_id(msg, "m_nIndex", "nIndex")
 	local db = get_main_db()
+	if db and db.m_nDispatchDepth == nil then
+		db.m_nDispatchDepth = 0
+	end
 	local success = id > 0 and pay_for(profile, db, "battleFace", id)
 	if success then
 		add_owned(profile, db, "battleFaces", id, "m_BattleFaceData", 150)
@@ -1190,6 +1350,9 @@ H.CBuyRhythmNoticeBar = function(conn, msg)
 	local profile = ensure_profile()
 	local id = message_id(msg, "m_nIndex", "nIndex")
 	local db = get_main_db()
+	if db and db.m_nDispatchDepth == nil then
+		db.m_nDispatchDepth = 0
+	end
 	local success = id > 0 and pay_for(profile, db, "rhythm", id)
 	if success then
 		add_owned(profile, db, "rhythmNoticeBars", id, "m_RhythmNoticeBar", 100)
@@ -1214,6 +1377,9 @@ H.CUseBattleFace = function(conn, msg)
 	profile.settings.battleFaces = type(profile.settings.battleFaces) == "table" and profile.settings.battleFaces or {}
 	profile.settings.battleFaces[tostring(kind)] = used ~= 0 and index or 0
 	local db = get_main_db()
+	if db and db.m_nDispatchDepth == nil then
+		db.m_nDispatchDepth = 0
+	end
 	set_data_block(db, "m_BattleFaceData", math.max(0, index), used ~= 0 and index or 0)
 	FakeWorld.Save()
 end
@@ -1384,13 +1550,19 @@ H.CAlterFirstEvent = function(_, msg)
 	local kind = message_id(msg, "nFirstEventType")
 	p.firstEvents[tostring(kind)] = 1
 	local db = get_main_db()
-	set_data_block(db, "m_FirstEvent", math.max(0, kind), 1)
+	if db and db.m_nDispatchDepth == nil then
+		db.m_nDispatchDepth = 0
+	end
+	set_first_event_block(db, p)
 	FakeWorld.Save()
 end
 
 H.CAlterPlayerInfo = function(_, msg)
 	local p = ensure_profile()
 	local db = get_main_db()
+	if db and db.m_nDispatchDepth == nil then
+		db.m_nDispatchDepth = 0
+	end
 	local fields = {
 		{ "Sex", "m_nNewSex" },
 		{ "Age", "m_nNewAge" },
@@ -1421,20 +1593,42 @@ end
 H.CAlterUseSkill = function(_, msg)
 	local p = ensure_profile()
 	local id = message_id(msg, "nSkillID")
+	if id <= 0 then return end
 	p.curSkill = id
 	set_member(get_main_db(), "m_CharBaseData", "SkillID", id)
+	sync_scene_skills(p)
 	FakeWorld.Save()
 end
 
 H.CAlterPassiveSkill = function(_, msg)
 	local p = ensure_profile()
 	local id = message_id(msg, "nSkillID")
-	if id > 0 then
-		p.passiveSkills[tostring(id)] = true
-		set_data_block(get_main_db(), "m_PassiveSkill", math.max(0, id - 1), id)
-		FakeWorld.Save()
+	if id <= 0 then return end
+	local list = normalize_passive_list(p)
+	local found = nil
+	for i, existing in ipairs(list) do
+		if existing == id then
+			found = i
+			break
+		end
 	end
-	respond(_, "CNotifyDelockResult", { m_nType = id > 0 and 3 or 1 })
+	if found then
+		table.remove(list, found)
+	else
+		local limit = max_passive_slots()
+		if #list >= limit then
+			if g_App and g_App.HideMsg then
+				pcall(g_App.HideMsg, g_App, "最多只能装备" .. tostring(limit) .. "个被动技能，请先取消已装备的被动")
+			end
+			return
+		end
+		list[#list + 1] = id
+	end
+	p.passiveSkills = list
+	p.passiveSkillsCustomized = true
+	set_passive_block(get_main_db(), p, true)
+	sync_scene_skills(p)
+	FakeWorld.Save()
 end
 
 H.CDelockSkill = function(conn, msg)

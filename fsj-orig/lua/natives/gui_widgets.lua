@@ -203,6 +203,18 @@ function CGListCtrl:InsertItemFromHandler(index, handler)
 			item:OnMsgDispatch(0, item, WM_CREATE or 1, 0, 0)
 		end
 	end
+	if not self.__pending_allloaded then
+		self.__pending_allloaded = true
+		DeferCall(function()
+			DeferCall(function()
+				self.__pending_allloaded = nil
+				if self.__node ~= nil and self.OnMsgDispatch and GM_WM_ITEM_ALLLOADED then
+					local ok, err = pcall(self.OnMsgDispatch, self, 0, self, GM_WM_ITEM_ALLLOADED, 0, 0)
+					if not ok then print("[GM_WM_ITEM_ALLLOADED] " .. tostring(err)) end
+				end
+			end)
+		end)
+	end
 	return row_index
 end
 

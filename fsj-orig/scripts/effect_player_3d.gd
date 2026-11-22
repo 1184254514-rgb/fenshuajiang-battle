@@ -19,9 +19,15 @@ const Render = preload("res://scripts/effect_render.gd")
 var units_per_engine: float = 1.0 / 64.0
 var attached_model: Node3D = null   # character model whose Skeleton3D bones units attach to (bone_name), Claude
 
+static var _cam_cache_frame: int = -1
+static var _cam_cache_basis: Basis = Basis.IDENTITY
+static var _cam_cache_pos: Vector3 = Vector3.ZERO
+static var _cam_cache_valid: bool = false
+
 var _simulation: EffectEval
 var _stem := ""
 var _visuals: Dictionary = {}
+var _ctx_dict: Dictionary = {}
 
 
 @warning_ignore("shadowed_variable_base_class")
@@ -61,9 +67,26 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	if not visible:
+		if _simulation != null and not _simulation.looping:
+			_simulation.wall_ms += maxf(delta, 0.0) * 1000.0
+			_simulation.time_ms += maxf(delta, 0.0) * 1000.0
+			if _simulation.is_finished():
+				set_process(false)
+				queue_free()
+		return
 	var _t0 := Time.get_ticks_usec()
 	_update_effect(delta)
 	Prof.add("eft:" + _stem, _t0)
+
+
+func _is_far_offscreen() -> bool:
+	if not _cam_cache_valid:
+		return false
+	var gp := global_position
+	var dx := gp.x - _cam_cache_pos.x
+	var dz := gp.z - _cam_cache_pos.z
+	return dx * dx + dz * dz > 2600.0
 
 
 func _context() -> Dictionary:
@@ -75,25 +98,51 @@ func _context() -> Dictionary:
 		),
 		Vector3.ZERO
 	)
-	var camera: Camera3D = get_viewport().get_camera_3d()
-	var camera_basis: Basis = Basis.IDENTITY
-	var camera_position: Vector3 = root.origin + Vector3(0, 0, 10000)
-	if is_instance_valid(camera):
-		camera_basis = camera.global_transform.basis.orthonormalized()
-		camera_position = camera.global_position
-	return {
-		"attached_model": attached_model,
-		"attached_model_units_per_engine": units_per_engine,
-		"root": root,
-		"camera_basis": camera_basis,
-		"camera_position": camera_position,
-		"unit_scale": units_per_engine,
-		"canvas": false,
-	}
+	var frame: int = Engine.get_process_frames()
+	if frame != _cam_cache_frame:
+		_cam_cache_frame = frame
+		var camera: Camera3D = get_viewport().get_camera_3d()
+		if is_instance_valid(camera):
+			_cam_cache_valid = true
+			_cam_cache_basis = camera.global_transform.basis.orthonormalized()
+			_cam_cache_pos = camera.global_position
+		else:
+			_cam_cache_valid = false
+	_ctx_dict["attached_model"] = attached_model
+	_ctx_dict["attached_model_units_per_engine"] = units_per_engine
+	_ctx_dict["root"] = root
+	_ctx_dict["camera_basis"] = _cam_cache_basis if _cam_cache_valid else Basis.IDENTITY
+	_ctx_dict["camera_position"] = _cam_cache_pos if _cam_cache_valid else (root.origin + Vector3(0, 0, 10000))
+	_ctx_dict["unit_scale"] = units_per_engine
+	_ctx_dict["canvas"] = false
+	return _ctx_dict
 
 
 func _update_effect(delta: float) -> void:
 	if _simulation == null:
+		return
+	var frame: int = Engine.get_process_frames()
+	if frame != _cam_cache_frame:
+		_cam_cache_frame = frame
+		var camera: Camera3D = get_viewport().get_camera_3d()
+		if is_instance_valid(camera):
+			_cam_cache_valid = true
+			_cam_cache_basis = camera.global_transform.basis.orthonormalized()
+			_cam_cache_pos = camera.global_position
+		else:
+			_cam_cache_valid = false
+	if delta > 0.0 and _is_far_offscreen():
+		if not _visuals.is_empty():
+			for key in _visuals:
+				var visual: Node3D = _visuals[key]
+				if is_instance_valid(visual):
+					visual.visible = false
+		if not _simulation.looping:
+			_simulation.wall_ms += delta * 1000.0
+			_simulation.time_ms += delta * 1000.0
+			if _simulation.is_finished():
+				set_process(false)
+				queue_free()
 		return
 	var _t := Time.get_ticks_usec()
 	var context: Dictionary = Render.u1_context(self, _simulation, _context())
@@ -104,29 +153,35 @@ func _update_effect(delta: float) -> void:
 	_t = Prof.add("p:adv", _t)
 	Render.update_model_units(self)
 	_t = Prof.add("p:upd", _t)
-	var seen: Dictionary = {}
-	var invertible: bool = absf(global_transform.basis.determinant()) > 0.000000001
-	var inverse: Transform3D = Transform3D.IDENTITY
-	if invertible:
-		inverse = global_transform.affine_inverse()
-		for packet_value in packets:
-			var packet: Dictionary = packet_value
-			var key: String = packet["id"]
-			seen[key] = true
-			var visual: Variant = _visuals.get(key)
-			if not is_instance_valid(visual):
-				visual = Render.WorldQuad.new()
-				add_child(visual)
-				_visuals[key] = visual
-			visual.update_quad(packet, inverse)
+	if not packets.is_empty() or not _visuals.is_empty():
+		var seen: Dictionary = {}
+		var invertible: bool = absf(global_transform.basis.determinant()) > 0.000000001
+		if invertible and not packets.is_empty():
+			var inverse: Transform3D = global_transform.affine_inverse()
+			for packet_value in packets:
+				var packet: Dictionary = packet_value
+				var key: String = packet["id"]
+				seen[key] = true
+				var visual: Variant = _visuals.get(key)
+				if not is_instance_valid(visual):
+					visual = Render.WorldQuad.new()
+					add_child(visual)
+					_visuals[key] = visual
+				if not (visual as Node3D).visible:
+					(visual as Node3D).visible = true
+				visual.update_quad(packet, inverse)
 
-	for key in _visuals.keys():
-		if not seen.has(key):
-			var visual: Node3D = _visuals[key]
-			if is_instance_valid(visual):
-				visual.hide()
-				visual.queue_free()
-			_visuals.erase(key)
+		if not _visuals.is_empty():
+			var stale: Array = []
+			for key in _visuals:
+				if not seen.has(key):
+					stale.append(key)
+			for key in stale:
+				var visual: Node3D = _visuals[key]
+				if is_instance_valid(visual):
+					visual.hide()
+					visual.queue_free()
+				_visuals.erase(key)
 
 	if _simulation.is_finished() and not Render.u1_has_tails(self):
 		set_process(false)

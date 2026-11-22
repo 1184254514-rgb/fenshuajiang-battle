@@ -1321,9 +1321,29 @@ function CMusicConfig:GetMusicName(id)
 	return maybe_translate(row and row.dName) or ""
 end
 
+local function local_music_fallback(id, path)
+	local lower = tostring(path or ""):lower()
+	if lower:find("netmusic/", 1, true) ~= 1 then return path, false end
+	local n = tonumber(id)
+	if n and n >= 100 then
+		local base_id = math.floor(n / 10) * 10 + 1
+		local base_row = music_row(base_id)
+		local base_path = base_row and tostring(base_row.MusicPath or base_row.szMusicPath or "") or ""
+		if base_path ~= "" and base_path:lower():find("netmusic/", 1, true) ~= 1 then
+			local ok, exists = pcall(function() return Host and Host:file_exists(base_path) end)
+			if not ok or exists ~= false then
+				return base_path, false
+			end
+		end
+	end
+	return path, true
+end
+
 function CMusicConfig:GetMusicPath(id)
 	local row = music_value(id)
-	return tostring((row and (row.MusicPath or row.szMusicPath)) or "")
+	local raw = tostring((row and (row.MusicPath or row.szMusicPath)) or "")
+	local resolved = local_music_fallback(id, raw)
+	return resolved
 end
 
 function CMusicConfig:GetMusicSize(id)
@@ -1332,8 +1352,10 @@ function CMusicConfig:GetMusicSize(id)
 end
 
 function CMusicConfig:IsNetMusic(id)
-	local path = self:GetMusicPath(id):lower()
-	return path:find("netmusic/", 1, true) == 1
+	local row = music_value(id)
+	local raw = tostring((row and (row.MusicPath or row.szMusicPath)) or "")
+	local _, is_net = local_music_fallback(id, raw)
+	return is_net
 end
 
 function CMusicConfig:IsExistMusicID(id)

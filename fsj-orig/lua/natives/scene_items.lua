@@ -125,12 +125,18 @@ local function boolean(v)
 	return v == true or (type(v) == "number" and v ~= 0)
 end
 
+local CONST_CACHE = {}
 local function constant(name, default)
+	local cached = CONST_CACHE[name]
+	if cached ~= nil then return cached end
 	local inst = CSnakeConstant and CSnakeConstant:Inst()
 	local f = inst and inst["Get" .. name]
 	if type(f) == "function" then
 		local ok, value = pcall(f, inst)
-		if ok and type(value) == "number" then return value end
+		if ok and type(value) == "number" then
+			CONST_CACHE[name] = value
+			return value
+		end
 	end
 	return default
 end
@@ -589,13 +595,17 @@ local function move_bucket(item, x, y)
 	end
 end
 
+local function sort_item_desc(a, b) return a.__c_id > b.__c_id end
+local EMPTY_LIST = {}
 local function items_at(sc, idx)
+	local bucket = sc.__c_buckets[idx]
+	if not bucket or next(bucket) == nil then return EMPTY_LIST end
 	local list = {}
-	for _, item in pairs(sc.__c_buckets[idx] or {}) do
+	for _, item in pairs(bucket) do
 		list[#list + 1] = item
 	end
 	-- I07: cell-list insertion body is missing.
-	table.sort(list, function(a, b) return a.__c_id > b.__c_id end)
+	if #list > 1 then table.sort(list, sort_item_desc) end
 	return list
 end
 
@@ -1203,16 +1213,25 @@ local function check_rect(sc, p, left, top, right, bottom)
 	-- CPlayer::CheckItem (0x341b44): x outer, y inner, exclusive upper bounds.
 	-- GetCharacterList's missing out-of-bounds behavior is represented by the
 	-- existing empty-outside-grid adapter.
+	local buckets = sc.__c_buckets
+	local W, H = sc.__W, sc.__H
 	for gx = x0, x1 - 1 do
-		for gy = y0, y1 - 1 do
-			local idx = cell_index(sc, s16(gx), s16(gy))
-			if idx then
-				for _, item in ipairs(items_at(sc, idx)) do
-					if sc.__c_items[item.__c_id] == item and item.__c_state == 2 then
-						if item.__c_dropType == 1 then
-							item:OnCircle(nil, p)
-						elseif item.__c_dropType == 0 then
-							p:OnCollideDropOut(item)
+		local sx = s16(gx)
+		if sx >= 0 and sx < W then
+			for gy = y0, y1 - 1 do
+				local sy = s16(gy)
+				if sy >= 0 and sy < H then
+					local idx = sy * W + sx
+					local bucket = buckets[idx]
+					if bucket and next(bucket) ~= nil then
+						for _, item in ipairs(items_at(sc, idx)) do
+							if sc.__c_items[item.__c_id] == item and item.__c_state == 2 then
+								if item.__c_dropType == 1 then
+									item:OnCircle(nil, p)
+								elseif item.__c_dropType == 0 then
+									p:OnCollideDropOut(item)
+								end
+							end
 						end
 					end
 				end

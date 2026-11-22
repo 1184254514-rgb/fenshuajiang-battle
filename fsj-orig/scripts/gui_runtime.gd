@@ -8,6 +8,7 @@ const GuiWidgetScript := preload("res://scripts/gui_widgets.gd")
 static var dispatch: Callable = Callable()
 static var _json_cache: Dictionary = {}
 static var _tex_cache: Dictionary = {}
+static var _doc_textures_cache: Dictionary = {}
 
 
 static func load_json(gui_name: String) -> Dictionary:
@@ -45,16 +46,22 @@ static func atlas(path: String) -> Texture2D:
 static var _dict_files: Dictionary = {}
 static var _hex_re: RegEx
 
+static func _extract_hex8(raw: String) -> String:
+	var n := raw.length()
+	if n != 8 and n != 9:
+		return ""
+	var start := n - 8
+	for i in range(start, n):
+		var c := raw.unicode_at(i)
+		if not ((c >= 48 and c <= 57) or (c >= 65 and c <= 70) or (c >= 97 and c <= 102)):
+			return ""
+	return raw.substr(start, 8).to_lower()
+
+
 static func resolve_text(raw: String) -> String:
-	if raw.length() < 9:
+	var id := _extract_hex8(raw)
+	if id.is_empty():
 		return raw
-	if _hex_re == null:
-		_hex_re = RegEx.new()
-		_hex_re.compile("^.?([0-9a-fA-F]{8})$")
-	var m := _hex_re.search(raw)
-	if m == null:
-		return raw
-	var id := m.get_string(1).to_lower()
 	var file_key := id.substr(0, 1)
 	if not _dict_files.has(file_key):
 		var table := {}
@@ -87,10 +94,15 @@ static func build(gui_name: String) -> GuiWnd:
 	if document.is_empty() or not document.has("window"):
 		return null
 
-	var textures: Array = []
-	var texture_names: Array = document.get("textures", [])
-	for texture_name in texture_names:
-		textures.append(atlas(str(texture_name)) if str(texture_name) != "" else null)
+	var textures: Array
+	if _doc_textures_cache.has(gui_name):
+		textures = _doc_textures_cache[gui_name]
+	else:
+		textures = []
+		var texture_names: Array = document.get("textures", [])
+		for texture_name in texture_names:
+			textures.append(atlas(str(texture_name)) if str(texture_name) != "" else null)
+		_doc_textures_cache[gui_name] = textures
 
 	var root := GuiWnd.new()
 	root.setup(document.get("window", {}), textures, "", GuiWidgetScript)

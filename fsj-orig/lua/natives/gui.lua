@@ -223,14 +223,39 @@ function CGWnd:GetCurHeight() return invoke(self, "get_cur_height") or 0 end
 function CGWnd:GetMaxWidth() return invoke(self, "get_max_width") or self:GetWndWidth() end
 function CGWnd:SetMaxStringLength(value) invoke(self, "set_max_string_length", value or 0) end
 function CGWnd:SetMaxCharLength(value) invoke(self, "set_max_char_length", value or 0) end
+function CGWnd:GetCursorPos()
+	local node = node_of(self)
+	local gx, gy = 0, 0
+	if node ~= nil then
+		local ok, pt = pcall(function() return node:get_global_mouse_position() end)
+		if ok and pt ~= nil then
+			gx, gy = pt.x or 0, pt.y or 0
+		end
+	end
+	return {
+		_x = gx, _y = gy,
+		x = function(s) return s._x end,
+		y = function(s) return s._y end,
+	}
+end
+
 function CGWnd:IsInWndArea(x, y)
 	local node = node_of(self)
 	if node == nil then return false end
-	return x >= 0 and y >= 0 and x <= node:get_w() and y <= node:get_h()
+	local ok_vis, vis = pcall(function() return node:is_visible_in_tree() end)
+	if ok_vis and not vis then return false end
+	local gx = node:get_global_x() or 0
+	local gy = node:get_global_y() or 0
+	local w = node:get_w() or 0
+	local h = node:get_h() or 0
+	return x >= gx and y >= gy and x <= gx + w and y <= gy + h
 end
 
 function CGWnd:GetRootWidth() return invoke(self, "get_root_width") or self:GetWndWidth() end
 function CGWnd:GetRootHeight() return invoke(self, "get_root_height") or self:GetWndHeight() end
+-- Match CPlayerDBClient:DispatchEventToHandler fallback when CGWnd's missing-native
+-- metatable would otherwise intercept pHandler.IsDispatchPlayerDBEvent and return nil.
+function CGWnd:IsDispatchPlayerDBEvent() return self:IsShow() end
 
 -- Load the widget-class methods after the shared CGWnd wrapper exists.
 require("natives.gui_widgets")

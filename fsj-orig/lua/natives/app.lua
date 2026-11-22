@@ -223,7 +223,14 @@ function CGWnd:IsInheritFrom(cls)
 end
 -- parent:AssignDlgChildToWnd(luaWnd, "a.b"): make an existing child window the native peer of luaWnd
 function CGWnd:AssignDlgChildToWnd(wnd, path, bCreate)
-	local node = self.__node and self.__node:child(path) or nil
+	local node = nil
+	if self.__node ~= nil then
+		if type(path) == "number" then
+			node = self.__node:child_at(math.tointeger(path - 1) or 0)
+		elseif path ~= nil then
+			node = self.__node:child(tostring(path))
+		end
+	end
 	if node == nil then return false end
 	wnd.__node = node
 	node:set_meta("lua", wnd)
@@ -252,12 +259,100 @@ function RegistCommitData(buffer, nOffset) end       -- C++ marks player-data bl
 -- ---------- ladder season / time ----------
 function CGameAppClient:GetCurLadderSeason() return 1 end
 
--- ---------- 3D (not implemented yet): a null object answering every call so UI scripts keep running ----------
+-- ---------- 3D UI preview renderer (Godot SubViewport backed) ----------
 local Null = {}
 Null.__index = function(t, k) return function(self, ...) return self end end
 function NullObject() return setmetatable({}, Null) end
-function CGWnd:GetViewportRenderer() self.__vp = self.__vp or NullObject() return self.__vp end
-function CGameAppClient:CreateRenderObject() return NullObject() end
+
+local function preview_model_for_equip(id)
+	local path
+	pcall(function()
+		local row = g_tblTabFile and g_tblTabFile.equip and g_tblTabFile.equip[id]
+		if row and row.szModel and row.szModel ~= "" then path = row.szModel end
+	end)
+	path = path or "role/mod/p_001.ams"
+	return "res://assets/models/" .. (path:match("([^/]+)%.ams$") or "p_001") .. ".glb"
+end
+
+local PreviewObj = {}
+PreviewObj.__index = function(t, k)
+	local v = rawget(PreviewObj, k)
+	if v ~= nil then return v end
+	return function(self, ...) return self end
+end
+function PreviewObj:OnEquipUpdated(nSkinID)
+	rawset(self, "__model", preview_model_for_equip(nSkinID))
+	self:_sync()
+end
+function PreviewObj:ShowTreasureBoxModel(nLevel)
+	local lv = math.max(1, math.min(3, tonumber(nLevel) or 1))
+	rawset(self, "__model", string.format("res://assets/models/box0%d.glb", lv))
+	self:_sync()
+end
+function PreviewObj:SetNodeAni(aniName)
+	local name = tostring(aniName or "stand")
+	rawset(self, "__ani", name)
+	-- Keep skin characters continuously animating: "stand_rest1" plays once then returns to looping "stand".
+	rawset(self, "__loop", name ~= "stand_rest1")
+	self:_sync()
+end
+function PreviewObj:_sync()
+	local vp_node = rawget(self, "__vp_node")
+	local model = rawget(self, "__model")
+	if vp_node and model then
+		local ani = rawget(self, "__ani") or "stand"
+		local loop = rawget(self, "__loop")
+		if loop == nil then loop = true end
+		pcall(function() vp_node:show_preview_model(model, ani, loop) end)
+	end
+end
+
+local PreviewViewport = {}
+PreviewViewport.__index = function(t, k)
+	local v = rawget(PreviewViewport, k)
+	if v ~= nil then return v end
+	return function(self, ...) return self end
+end
+function PreviewViewport:GetCamera()
+	local cam = rawget(self, "__cam")
+	if not cam then
+		cam = NullObject()
+		rawset(self, "__cam", cam)
+	end
+	return cam
+end
+function PreviewViewport:AddChild(obj)
+	local wnd = rawget(self, "__wnd")
+	if type(obj) == "table" and wnd and wnd.__node then
+		rawset(obj, "__vp_node", wnd.__node)
+		if rawget(PreviewObj, "_sync") and obj._sync then obj:_sync() end
+	end
+end
+function PreviewViewport:RemoveChild(obj)
+	local wnd = rawget(self, "__wnd")
+	if wnd and wnd.__node then
+		pcall(function() wnd.__node:clear_preview_model() end)
+	end
+end
+
+function CGWnd:GetViewportRenderer()
+	local vp = rawget(self, "__vp")
+	if not vp then
+		vp = setmetatable({ __wnd = self }, PreviewViewport)
+		rawset(self, "__vp", vp)
+	end
+	return vp
+end
+function CGameAppClient:CreateRenderObject()
+	return setmetatable({ __ani = "stand" }, PreviewObj)
+end
+function CGameAppClient:DestroyRenderObject(obj)
+	local vp_node = type(obj) == "table" and rawget(obj, "__vp_node") or nil
+	if vp_node then
+		pcall(function() vp_node:clear_preview_model() end)
+		rawset(obj, "__vp_node", nil)
+	end
+end
 function CGameAppClient:GetDataPath() return "" end
 
 function CGameAppClient:GetLogPath() return "user://log/" end

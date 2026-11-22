@@ -83,17 +83,36 @@ func _ready() -> void:
 	await screenshot("lobby")
 	click(lua("return g_App:GetGameStart().m_pBtnSkill.__node") as Control)
 	await frames(12)
-	check(skill_hud.get("_menu_layer").visible, "bottom skill button opens configuration")
-	var active := skill_hud.find_child("ActiveSkillSelector", true, false) as OptionButton
-	var skill_index := active.get_item_index(2)
-	active.select(skill_index)
-	active.item_selected.emit(skill_index)
+	check(lua("return g_App:GetGameStart().m_pWndSkillDevelop:IsShow()") == true, "bottom skill button opens original APK skill screen")
+	check(not skill_hud.get("_menu_layer").visible, "custom fallback skill dropdown stays hidden")
+	# Ensure active skill 2 is chosen via the real original card button even if a saved profile already had it active.
+	if lua("return SceneSkills.selected") == 2:
+		var use3 := lua("""
+			local w=g_App:GetGameStart().m_pWndSkillDevelop
+			for j=0,w.m_list:GetColumnCount()-1 do
+				local item=w.m_list:GetSubItem(0,j)
+				if item and item.m_tblSkill and item.m_tblSkill.nSkillID==3 then return item.m_pBtnUse.__node end
+			end
+		""") as Control
+		if use3 != null:
+			click(use3)
+			await frames(6)
+	var use2 := lua("""
+		local w=g_App:GetGameStart().m_pWndSkillDevelop
+		for j=0,w.m_list:GetColumnCount()-1 do
+			local item=w.m_list:GetSubItem(0,j)
+			if item and item.m_tblSkill and item.m_tblSkill.nSkillID==2 then return item.m_pBtnUse.__node end
+		end
+	""") as Control
+	check(use2 != null and use2.is_visible_in_tree(), "original skill card use button available")
+	if use2 != null:
+		click(use2)
 	await frames(12)
-	check(lua("return SceneSkills.selected") == 2, "configuration changes equipped skill")
+	check(lua("return SceneSkills.selected") == 2, "original skill screen changes equipped skill")
 	await screenshot("skills")
-	click(skill_hud.find_child("CloseSkillMenuButton", true, false) as Button)
+	click(lua("return g_App:GetGameStart().m_pWndSkillDevelop.m_pBtnClose.__node") as Control)
 	await frames(12)
-	check(not skill_hud.get("_menu_layer").visible, "close button dismisses configuration")
+	check(lua("return g_App:GetGameStart().m_pWndSkillDevelop:IsShow()") == false, "close button dismisses original skill screen")
 	click(self_entry)
 	await frames(45)
 	check(lua("return g_App.__scene.__timed_match") == true, "lobby button starts timed match")

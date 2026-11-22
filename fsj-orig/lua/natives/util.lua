@@ -1184,3 +1184,11 @@ end
 function CGammaRand:RandFloat(minimum, maximum)
 	return self:RandomFloat(minimum, maximum)
 end
+
+-- Animation frame range struct used by CSkinItemWnd / 3D preview callers.
+if not rawget(_G, "SFramePair") or not rawget(SFramePair, "m_uStart") then
+	SFramePair = SFramePair or class()
+	function SFramePair:Ctor(s, e) self.__start = s or 0; self.__end = e or 0 end
+	function SFramePair:m_uStart(v) if v ~= nil then self.__start = v end return self.__start or 0 end
+	function SFramePair:m_uEnd(v) if v ~= nil then self.__end = v end return self.__end or 0 end
+end

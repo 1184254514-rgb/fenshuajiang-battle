@@ -16,6 +16,8 @@ var roster: Label
 var status_label: Label
 var opened := false
 var _poll_left := 0.0
+var _cached_replay: Control = null
+var _last_replay_is_client: int = -1
 const INK := Color("14364b")
 const CREAM := Color("fff8df")
 var font: Font = preload("res://fonts/ZCOOLKuaiLe-Regular.ttf")
@@ -80,6 +82,7 @@ func _ready() -> void:
 	z_index = 3100
 	entry = button(self, "局域网联机", Vector2(485, 628), Vector2(188, 64), func(): opened = true)
 	entry.name = "LanEntryButton"
+	entry.hide()
 	layer = ColorRect.new()
 	layer.color = Color(0.025, 0.08, 0.15, 0.72)
 	layer.size = Vector2(1280, 720)
@@ -121,28 +124,36 @@ func _process(delta: float) -> void:
 	_poll_left = 0.1
 	var in_game: bool = session.phase in ["playing", "finished", "loading"]
 	var connected: bool = not session.role.is_empty()
-	layer.visible = not in_game and (opened or connected)
-	var original_modal: bool = host.lua.do_string("local h=g_App and g_App:GetGameStart();local w=h and rawget(h,'m_pWndNewSeasonComing');return w and w:IsShow() or false") == true
-	entry.visible = not original_modal and not in_game and not layer.visible and host.lua.do_string("return not (g_App and g_App.__scene)") == true
-	nick.editable = not connected
-	ip.editable = not connected
-	host_button.disabled = connected
-	join_button.disabled = connected
-	close_button.visible = not connected
-	start_button.visible = session.role == "host"
-	start_button.disabled = session.phase != "lobby"
-	leave_button.visible = connected
-	status_label.text = session.status
-	if connected:
-		description.text = "房主 IP：%s\nUDP 27866 · 同一局域网 · 默认 4 分钟，时长由房主设置" % session.address
-		var names := PackedStringArray()
-		for member in session.members:
-			names.append(str(member.nick) + ("（房主）" if int(member.peer) == 1 else ""))
-		roster.text = "房间成员 %d/10：\n%s\n\n空余的 %d 个位置由 AI 补齐。" % [names.size(), "、".join(names), 10 - names.size()]
-	else:
-		description.text = "同一 Wi-Fi 或有线局域网 · 无需密码\n最多 10 人，空位由 AI 补齐，默认 4 分钟"
-		roster.text = "先在大厅底部「技能」中配置技能，再创建或加入房间。"
-	var replay := get_parent().find_child("RematchButton", true, false)
-	if replay != null:
-		replay.enable_wnd(session.role != "client")
-		replay.set_wnd_text("等待房主再开" if session.role == "client" else "继续游戏")
+	var should_show := not in_game and (opened or connected)
+	if layer.visible != should_show:
+		layer.visible = should_show
+	if entry.visible:
+		entry.visible = false
+	if should_show:
+		nick.editable = not connected
+		ip.editable = not connected
+		host_button.disabled = connected
+		join_button.disabled = connected
+		close_button.visible = not connected
+		start_button.visible = session.role == "host"
+		start_button.disabled = session.phase != "lobby"
+		leave_button.visible = connected
+		if status_label.text != session.status:
+			status_label.text = session.status
+		if connected:
+			description.text = "房主 IP：%s\nUDP 27866 · 同一局域网 · 默认 4 分钟，时长由房主设置" % session.address
+			var names := PackedStringArray()
+			for member in session.members:
+				names.append(str(member.nick) + ("（房主）" if int(member.peer) == 1 else ""))
+			roster.text = "房间成员 %d/10：\n%s\n\n空余的 %d 个位置由 AI 补齐。" % [names.size(), "、".join(names), 10 - names.size()]
+		else:
+			description.text = "同一 Wi-Fi 或有线局域网 · 无需密码\n最多 10 人，空位由 AI 补齐，默认 4 分钟"
+			roster.text = "先在大厅底部「技能」中配置技能，再创建或加入房间。"
+	var is_client := 1 if session.role == "client" else 0
+	if _cached_replay == null or not is_instance_valid(_cached_replay):
+		_cached_replay = get_parent().find_child("RematchButton", true, false) as Control
+		_last_replay_is_client = -1
+	if _cached_replay != null and _last_replay_is_client != is_client:
+		_last_replay_is_client = is_client
+		_cached_replay.enable_wnd(is_client == 0)
+		_cached_replay.set_wnd_text("等待房主再开" if is_client == 1 else "继续游戏")

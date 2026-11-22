@@ -71,7 +71,7 @@ const _IMAGE_SHADER_SOURCE := """
 shader_type canvas_item;
 render_mode unshaded, blend_mix;
 
-uniform sampler2D gui_texture : source_color, filter_linear, repeat_disable;
+uniform sampler2D gui_texture : source_color, filter_linear, repeat_enable;
 uniform bool gui_has_texture = false;
 uniform vec2 gui_texture_size = vec2(1.0);
 uniform vec4 gui_multiply = vec4(1.0);
@@ -322,7 +322,9 @@ static func decode_image(raw: Dictionary, textures: Array = []) -> Dictionary:
 	if texture == null and texture_index > 0 and texture_index < textures.size():
 		texture = textures[texture_index] as Texture2D
 
-	var ready := texture != null or intentional_null
+	var group_id := integer(raw.get("group_id", raw.get("field_0x34", 0))) & 0xffff
+	var unbound_nine_slice := texture == null and texture_index == 0xffffffff and group_id > 0 and (absf(source.x) > 0.5 or absf(source.y) > 0.5)
+	var ready := (texture != null or intentional_null) and not unbound_nine_slice
 	if raw.has("ready"):
 		ready = ready and bool(raw["ready"])
 	if texture != null:

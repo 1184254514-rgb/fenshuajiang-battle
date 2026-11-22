@@ -56,6 +56,10 @@ var _ui_layer: CanvasLayer
 var _ui_image: TextureRect
 var _warnings: Dictionary = {}
 var _hook_indices: Array[int] = []
+var _needs_ui_viewport: bool = false
+var _material_actors: Array[RuntimeUnit] = []
+var _anim_actors: Array[RuntimeUnit] = []
+var _rig_actors: Array[RuntimeUnit] = []
 
 
 static func unit_type(unit: Dictionary) -> String:
@@ -101,24 +105,42 @@ static func prepare(
 	evaluator: EffectEval,
 	frame_context: Dictionary
 ) -> void:
-	var driver: EffectUnitsModel = (owner.get_meta(META) if owner.has_meta(META) else null) as EffectUnitsModel
-	if driver == null:
-		driver = EffectUnitsModel.new()
-		driver.name = "EffectUnitsModel"
-		driver.host = owner
-		driver.simulation = evaluator
-		driver.context = frame_context
-		owner.set_meta(META, driver)
-		owner.add_child(driver)
-		driver._build()
+	if owner.has_meta(META):
+		var existing: Variant = owner.get_meta(META)
+		if existing == null:
+			return
+		var driver: EffectUnitsModel = existing as EffectUnitsModel
+		if is_instance_valid(driver):
+			driver.context = frame_context
+			if driver._needs_ui_viewport:
+				driver._prepare_canvas()
+		return
+	var needed: bool = false
+	for u in evaluator.units:
+		if handles(u) or bool(u.get("needs_bone", false)):
+			needed = true
+			break
+	if not needed:
+		owner.set_meta(META, null)
+		return
+	var driver := EffectUnitsModel.new()
+	driver.name = "EffectUnitsModel"
+	driver.host = owner
+	driver.simulation = evaluator
 	driver.context = frame_context
-	driver._prepare_canvas()
+	owner.set_meta(META, driver)
+	owner.add_child(driver)
+	driver._build()
+	if driver._needs_ui_viewport:
+		driver._prepare_canvas()
 
 
 static func update(owner: Node) -> void:
-	var driver: EffectUnitsModel = (owner.get_meta(META) if owner.has_meta(META) else null) as EffectUnitsModel
-	if is_instance_valid(driver):
-		driver._update_units()
+	if not owner.has_meta(META):
+		return
+	var existing: Variant = owner.get_meta(META)
+	if existing != null and is_instance_valid(existing):
+		(existing as EffectUnitsModel)._update_units()
 
 
 static func active(unit: Dictionary, at_ms: float) -> bool:
@@ -185,14 +207,23 @@ static func gain_at_distance(distance: float, near_value: float, far_value: floa
 	return (far_value - distance) / (far_value - near_value)
 
 
+static var _global_warnings: Dictionary = {}
+
+
 func warn_once(key: String, message: String) -> void:
-	if not _warnings.has(key):
+	if not _warnings.has(key) and not _global_warnings.has(message):
 		_warnings[key] = true
+		_global_warnings[message] = true
 		push_warning("EffectUnitsModel: " + message)
 
 
 func _build() -> void:
-	_prepare_canvas()
+	for index in range(simulation.units.size()):
+		if unit_type(simulation.units[index]) == "CModelConsoleProp":
+			_needs_ui_viewport = bool(context.get("canvas", false))
+			break
+	if _needs_ui_viewport:
+		_prepare_canvas()
 	for index in range(simulation.units.size()):
 		var definition: Dictionary = simulation.units[index]
 		if not handles(definition):
@@ -204,6 +235,12 @@ func _build() -> void:
 		actor.type_name = unit_type(definition)
 		actor.name = "%s_%d" % [actor.type_name, index]
 		actors[index] = actor
+		if actor.type_name == "CModelMaterialProp":
+			_material_actors.append(actor)
+			_rig_actors.append(actor)
+		elif actor.type_name == "CModelAnimationProp":
+			_anim_actors.append(actor)
+			_rig_actors.append(actor)
 		if _ui_viewport != null:
 			_ui_viewport.add_child(actor)
 		else:
@@ -282,10 +319,8 @@ func _update_units() -> void:
 		var actor: RuntimeUnit = value
 		actor.update(simulation.time_ms)
 	# Resolve external targets before applying their pose/material listeners.
-	for value in actors.values():
-		var actor: RuntimeUnit = value
-		if actor.type_name in ["CModelAnimationProp", "CModelMaterialProp"]:
-			_rig_for(actor.index)
+	for actor in _rig_actors:
+		_rig_for(actor.index)
 	for value in rigs.values():
 		var rig: ModelRig = value
 		if is_instance_valid(rig.root):
@@ -892,6 +927,13 @@ class ModelRig extends RefCounted:
 	var _saved_player: Dictionary = {}
 	var _pose_stamp: Vector2 = Vector2(-1.0, -1.0)
 	var _materials_live: bool = false
+	var _bone_cache: Dictionary = {}
+	var _anim_candidates: Array[StringName] = []
+	var _has_reset_anim: bool = false
+	var _clip_cache: Dictionary = {}
+	var _last_pose_wall_ms: float = -1000.0
+	var _material_check_done: bool = false
+	var _has_matching_material: bool = false
 
 	func _init(
 		driver: EffectUnitsModel, model_root: Node3D, console_unit: RuntimeUnit
@@ -900,6 +942,12 @@ class ModelRig extends RefCounted:
 		root = model_root
 		console = console_unit
 		_collect(root)
+		if player != null:
+			for name_value in player.get_animation_list():
+				if name_value == "RESET":
+					_has_reset_anim = true
+				else:
+					_anim_candidates.append(StringName(name_value))
 		if console != null:
 			_apply_pieces()
 
@@ -953,18 +1001,24 @@ class ModelRig extends RefCounted:
 	func clip_name(selector: Variant, figure: bool = false) -> StringName:
 		if player == null or selector == null:
 			return &""
-		var names: PackedStringArray = player.get_animation_list()
+		var cache_key := "%s:%s" % [str(selector), "1" if figure else "0"]
+		if _clip_cache.has(cache_key):
+			return _clip_cache[cache_key]
+		var result: StringName = &""
 		if selector is String or selector is StringName:
 			var requested: StringName = StringName(str(selector))
 			if player.has_animation(requested):
-				return requested
-			manager.warn_once(
-				"clip:%d:%s" % [root.get_instance_id(), str(selector)],
-				"animation '%s' is absent from %s." % [str(selector), str(root.name)]
-			)
-			return &""
+				result = requested
+			else:
+				manager.warn_once(
+					"clip:%d:%s" % [root.get_instance_id(), str(selector)],
+					"animation '%s' is absent from %s." % [str(selector), str(root.name)]
+				)
+			_clip_cache[cache_key] = result
+			return result
 		var number: int = int(selector)
 		if number < 0 or number == 65535:
+			_clip_cache[cache_key] = &""
 			return &""
 		var mapping: Variant = manager.context.get(
 			"figure_names" if figure else "animation_names", {}
@@ -977,18 +1031,21 @@ class ModelRig extends RefCounted:
 		elif mapping is Dictionary:
 			mapped = mapping.get(number, mapping.get(str(number)))
 		if mapped != null:
-			return clip_name(str(mapped), false)
-		var candidates: Array[StringName] = []
-		for name_value in names:
-			if name_value != "RESET":
-				candidates.append(StringName(name_value))
+			result = clip_name(str(mapped), false)
+			_clip_cache[cache_key] = result
+			return result
+		if _anim_candidates.is_empty():
+			_clip_cache[cache_key] = &""
+			return &""
 		# ASSUMPTION: Without the original ID map, numeric IDs use the
 		# AnimationPlayer's non-RESET order. Explicit names/maps are preferred.
 		manager.warn_once(
 			"clip_ids:%d" % root.get_instance_id(),
 			"numeric animation/figure IDs use imported order; supply the original name map."
 		)
-		return candidates[number] if number < candidates.size() else &""
+		result = _anim_candidates[number] if number < _anim_candidates.size() else &""
+		_clip_cache[cache_key] = result
+		return result
 
 	func _elapsed(unit: RuntimeUnit) -> float:
 		return maxf(
@@ -998,10 +1055,21 @@ class ModelRig extends RefCounted:
 	func apply_pose() -> void:
 		if player == null or not is_instance_valid(root):
 			return
+		if _anim_candidates.is_empty() and not _has_reset_anim:
+			return
+		if console == null and manager._anim_actors.is_empty():
+			if _tree != null:
+				_release_tree()
+			return
 		var stamp: Vector2 = Vector2(manager.simulation.wall_ms, manager.simulation.time_ms)
 		if stamp == _pose_stamp:
 			return
+		# Original Gamma skeletal effects run at 30 Hz (33ms); throttling
+		# AnimationTree evaluation to ~35 Hz avoids redundant bone rebuilds at 100+ FPS.
+		if _tree != null and absf(manager.simulation.wall_ms - _last_pose_wall_ms) < 28.0:
+			return
 		_pose_stamp = stamp
+		_last_pose_wall_ms = manager.simulation.wall_ms
 		var layers: Array[Dictionary] = []
 		var base: StringName = &""
 		var base_time: float = 0.0
@@ -1019,9 +1087,8 @@ class ModelRig extends RefCounted:
 			if second != &"" and weight != 1.0:
 				layers.append({"name": second, "time": base_time, "weight": 1.0 - weight})
 
-		for value in manager.actors.values():
-			var actor: RuntimeUnit = value
-			if actor.type_name != "CModelAnimationProp" or not manager.target_is(self, actor):
+		for actor in manager._anim_actors:
+			if not manager.target_is(self, actor):
 				continue
 			var enabled: bool = (
 				actor.is_active(manager.simulation.time_ms)
@@ -1136,36 +1203,73 @@ class ModelRig extends RefCounted:
 	func bone_transform(selector: Variant) -> Variant:
 		if selector == null:
 			return null
-		for skeleton in skeletons:
-			var bone: int = -1
-			if selector is String or selector is StringName:
-				bone = skeleton.find_bone(str(selector))
-			elif selector is int or selector is float:
-				bone = int(selector)
-			if bone < 0 or bone >= skeleton.get_bone_count():
-				continue
-			var result: Transform3D = skeleton.global_transform * skeleton.get_bone_global_pose(bone)
-			var factor: float = 1.0 / 64.0
-			if console == null:
-				# ASSUMPTION: Externally attached models are already in world
-				# units; their bone axes need engine-to-world conversion.
-				factor = float(manager.context.get(
-					"attached_model_units_per_engine",
-					manager.context.get("unit_scale", 1.0)
-				))
-			# Preserve translated bone positions, but do not apply GLB's
-			# 64x geometry conversion again to a child's engine-unit offset.
-			result.basis = result.basis.scaled(Vector3.ONE * factor)
-			return result
-		return null
+		var cached: Variant = _bone_cache.get(selector, null)
+		var skel: Skeleton3D = null
+		var bone: int = -1
+		if cached is Array:
+			skel = cached[0] as Skeleton3D
+			bone = int(cached[1])
+			if not is_instance_valid(skel):
+				skel = null
+				bone = -1
+		else:
+			for skeleton in skeletons:
+				var candidate: int = -1
+				if selector is String or selector is StringName:
+					candidate = skeleton.find_bone(str(selector))
+				elif selector is int or selector is float:
+					candidate = int(selector)
+				if candidate >= 0 and candidate < skeleton.get_bone_count():
+					skel = skeleton
+					bone = candidate
+					break
+			_bone_cache[selector] = [skel, bone]
+		if skel == null or bone < 0:
+			return null
+		var result: Transform3D = skel.global_transform * skel.get_bone_global_pose(bone)
+		var factor: float = 1.0 / 64.0
+		if console == null:
+			# ASSUMPTION: Externally attached models are already in world
+			# units; their bone axes need engine-to-world conversion.
+			factor = float(manager.context.get(
+				"attached_model_units_per_engine",
+				manager.context.get("unit_scale", 1.0)
+			))
+		# Preserve translated bone positions, but do not apply GLB's
+		# 64x geometry conversion again to a child's engine-unit offset.
+		result.basis = result.basis.scaled(Vector3.ONE * factor)
+		return result
 
 	func apply_materials() -> void:
+		if manager._material_actors.is_empty():
+			_restore_materials()
+			return
+		if not _material_check_done:
+			_material_check_done = true
+			_has_matching_material = false
+			for actor in manager._material_actors:
+				if not manager.target_is(self, actor):
+					continue
+				var names: Variant = actor.p("submeshes", [])
+				if not (names is Array) or names.is_empty():
+					_has_matching_material = true
+					break
+				for record in surfaces:
+					var mesh: MeshInstance3D = record["mesh"]
+					if is_instance_valid(mesh):
+						var source_name: String = str(mesh.get_meta("gamma_submesh", mesh.name))
+						if source_name in names:
+							_has_matching_material = true
+							break
+				if _has_matching_material:
+					break
+		if not _has_matching_material:
+			_restore_materials()
+			return
 		var listeners: Array[RuntimeUnit] = []
-		for value in manager.actors.values():
-			var actor: RuntimeUnit = value
+		for actor in manager._material_actors:
 			if (
-				actor.type_name == "CModelMaterialProp"
-				and actor.is_active(manager.simulation.time_ms)
+				actor.is_active(manager.simulation.time_ms)
 				and not bool(actor.p("render_disabled", false))
 				and manager.target_is(self, actor)
 			):
@@ -1173,22 +1277,29 @@ class ModelRig extends RefCounted:
 		if listeners.is_empty():
 			_restore_materials()
 			return
-		_materials_live = true
+		var applied_any: bool = false
 		for record in surfaces:
 			var mesh: MeshInstance3D = record["mesh"]
 			if not is_instance_valid(mesh):
 				continue
+			var source_name: String = str(mesh.get_meta("gamma_submesh", mesh.name))
+			var mesh_listeners: Array[RuntimeUnit] = []
+			for actor in listeners:
+				var names: Variant = actor.p("submeshes", [])
+				if names is Array and not names.is_empty():
+					if not source_name in names:
+						continue
+				mesh_listeners.append(actor)
+			if mesh_listeners.is_empty():
+				continue
+			applied_any = true
+			_materials_live = true
 			mesh.material_override = null
 			var bases: Array = record["bases"]
 			for surface in range(bases.size()):
 				var base: Material = bases[surface] as Material
 				var settings: Dictionary = EffectUnitsModel.material_settings(base)
-				for actor in listeners:
-					var names: Variant = actor.p("submeshes", [])
-					if names is Array and not names.is_empty():
-						var source_name: String = str(mesh.get_meta("gamma_submesh", mesh.name))
-						if not source_name in names:
-							continue
+				for actor in mesh_listeners:
 					EffectUnitsModel.apply_material_unit(settings, actor)
 				var shader: Shader = EffectUnitsModel.model_shader(settings)
 				var cache: Dictionary = record["runtime"]
@@ -1201,7 +1312,10 @@ class ModelRig extends RefCounted:
 					cache[key] = material
 				var material: ShaderMaterial = cache[key]
 				EffectUnitsModel.set_model_uniforms(material, settings)
-				mesh.set_surface_override_material(surface, material)
+				if mesh.get_surface_override_material(surface) != material:
+					mesh.set_surface_override_material(surface, material)
+		if not applied_any:
+			_restore_materials()
 
 	func _restore_materials() -> void:
 		if not _materials_live:
@@ -1525,34 +1639,60 @@ uniform int clip%d = 0;
 	return shader
 
 
+const _STAGE_ENABLED_NAMES: Array[StringName] = [&"enabled0", &"enabled1", &"enabled2", &"enabled3", &"enabled4", &"enabled5", &"enabled6", &"enabled7"]
+const _STAGE_IMAGE_NAMES: Array[StringName] = [&"image0", &"image1", &"image2", &"image3", &"image4", &"image5", &"image6", &"image7"]
+const _STAGE_UV_NAMES: Array[StringName] = [&"uv0", &"uv1", &"uv2", &"uv3", &"uv4", &"uv5", &"uv6", &"uv7"]
+const _STAGE_RGB_NAMES: Array[StringName] = [&"rgb0", &"rgb1", &"rgb2", &"rgb3", &"rgb4", &"rgb5", &"rgb6", &"rgb7"]
+const _STAGE_ADD_NAMES: Array[StringName] = [&"add0", &"add1", &"add2", &"add3", &"add4", &"add5", &"add6", &"add7"]
+const _STAGE_RECT_NAMES: Array[StringName] = [&"rect0", &"rect1", &"rect2", &"rect3", &"rect4", &"rect5", &"rect6", &"rect7"]
+const _STAGE_CLIP_NAMES: Array[StringName] = [&"clip0", &"clip1", &"clip2", &"clip3", &"clip4", &"clip5", &"clip6", &"clip7"]
+
+
 static func set_model_uniforms(material: ShaderMaterial, settings: Dictionary) -> void:
-	material.set_shader_parameter("diffuse", E.unpack_color(int(settings["diffuse"])))
-	material.set_shader_parameter("cutoff", float(settings["cutoff"]))
-	material.set_shader_parameter("material_roughness", float(settings["roughness"]))
-	material.set_shader_parameter("material_metallic", float(settings["metallic"]))
-	material.set_shader_parameter("emission_color", settings["emission"])
-	material.set_shader_parameter("use_vertex_color", bool(settings["vertex_color"]))
-	material.set_shader_parameter("normal_enabled", settings["normal"] != null)
-	material.set_shader_parameter("normal_image", settings["normal"])
-	material.set_shader_parameter("normal_scale", float(settings["normal_scale"]))
+	material.set_shader_parameter(&"diffuse", E.unpack_color(int(settings["diffuse"])))
+	material.set_shader_parameter(&"cutoff", float(settings["cutoff"]))
+	material.set_shader_parameter(&"material_roughness", float(settings["roughness"]))
+	material.set_shader_parameter(&"material_metallic", float(settings["metallic"]))
+	material.set_shader_parameter(&"emission_color", settings["emission"])
+	material.set_shader_parameter(&"use_vertex_color", bool(settings["vertex_color"]))
+	material.set_shader_parameter(&"normal_enabled", settings["normal"] != null)
+	if settings["normal"] != null:
+		material.set_shader_parameter(&"normal_image", settings["normal"])
+		material.set_shader_parameter(&"normal_scale", float(settings["normal_scale"]))
+	var init_mask: int = int(material.get_meta(&"_stage_active_mask", -1))
+	var next_mask: int = 0
+	var tex_arr: Array = settings["textures"]
+	var uv_arr: Array = settings["uv"]
+	var rect_arr: Array = settings["rect"]
+	var rgb_arr: Array = settings["rgb"]
+	var add_arr: Array = settings["add"]
+	var clip_arr: Array = settings["clip"]
 	for stage in range(8):
-		var uv: Transform2D = settings["uv"][stage]
-		var rectangle: Rect2 = settings["rect"][stage]
-		material.set_shader_parameter("enabled%d" % stage, settings["textures"][stage] != null)
-		material.set_shader_parameter("image%d" % stage, settings["textures"][stage])
-		material.set_shader_parameter("uv%d" % stage, Basis(
-			Vector3(uv.x.x, uv.x.y, 0),
-			Vector3(uv.y.x, uv.y.y, 0),
-			Vector3(uv.origin.x, uv.origin.y, 1)
-		))
-		material.set_shader_parameter("rgb%d" % stage, settings["rgb"][stage])
-		material.set_shader_parameter("add%d" % stage, settings["add"][stage])
-		material.set_shader_parameter("rect%d" % stage, Vector4(
-			rectangle.position.x, rectangle.position.y,
-			rectangle.size.x, rectangle.size.y
-		))
-		material.set_shader_parameter("clip%d" % stage, int(settings["clip"][stage]))
-	material.set_meta("gamma_native_bytes", settings["native_bytes"].duplicate())
+		var tex: Variant = tex_arr[stage]
+		var is_en: bool = tex != null
+		if is_en:
+			next_mask |= (1 << stage)
+			var uv: Transform2D = uv_arr[stage]
+			var rectangle: Rect2 = rect_arr[stage]
+			material.set_shader_parameter(_STAGE_ENABLED_NAMES[stage], true)
+			material.set_shader_parameter(_STAGE_IMAGE_NAMES[stage], tex)
+			material.set_shader_parameter(_STAGE_UV_NAMES[stage], Basis(
+				Vector3(uv.x.x, uv.x.y, 0),
+				Vector3(uv.y.x, uv.y.y, 0),
+				Vector3(uv.origin.x, uv.origin.y, 1)
+			))
+			material.set_shader_parameter(_STAGE_RGB_NAMES[stage], rgb_arr[stage])
+			material.set_shader_parameter(_STAGE_ADD_NAMES[stage], add_arr[stage])
+			material.set_shader_parameter(_STAGE_RECT_NAMES[stage], Vector4(
+				rectangle.position.x, rectangle.position.y,
+				rectangle.size.x, rectangle.size.y
+			))
+			material.set_shader_parameter(_STAGE_CLIP_NAMES[stage], int(clip_arr[stage]))
+		elif init_mask < 0 or (init_mask & (1 << stage)) != 0:
+			material.set_shader_parameter(_STAGE_ENABLED_NAMES[stage], false)
+	material.set_meta(&"_stage_active_mask", next_mask)
+	if not (settings["native_bytes"] as Dictionary).is_empty():
+		material.set_meta("gamma_native_bytes", settings["native_bytes"].duplicate())
 
 
 static func filter_shader(mode: int, blend: String, distortion: bool) -> Shader:

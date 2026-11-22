@@ -54,6 +54,7 @@ class LuaApi extends RefCounted:
 		var rows := read_text("config/music.txt").split("
 ")
 		var found := {}
+		var base_id := int(music_id / 10) * 10 + 1
 		var header: PackedStringArray = rows[0].strip_edges(false, true).split("	") if rows.size() > 0 else PackedStringArray()
 		for line in rows:
 			var c := line.strip_edges(false, true).split("	")
@@ -61,13 +62,22 @@ class LuaApi extends RefCounted:
 				var row := {}
 				for k in mini(header.size(), c.size()):
 					row[header[k].strip_edges().trim_prefix("﻿")] = c[k]
-				if int(c[0]) == music_id:
-					found = {"m": c[12], "r": c[13], "row": row}
-				if int(c[0]) == 121 and not found.has("def"):
+				var rid := int(c[0])
+				if rid == music_id:
+					found["m"] = c[12]
+					found["r"] = c[13]
+					found["row"] = row
+				if rid == base_id:
+					found["base_m"] = c[12]
+				if rid == 121 and not found.has("def"):
 					found["def"] = {"m": c[12], "r": c[13], "row": row}
 		var pick: Dictionary = found if found.has("m") else found.get("def", {})
-		if pick.has("m") and not FileAccess.file_exists("res://data/orig/" + String(pick["m"])) and found.has("def"):
-			pick = found["def"]
+		if pick.has("m") and not FileAccess.file_exists("res://data/orig/" + String(pick["m"])):
+			if found.has("base_m") and FileAccess.file_exists("res://data/orig/" + String(found["base_m"])):
+				pick = pick.duplicate()
+				pick["m"] = found["base_m"]
+			elif found.has("def"):
+				pick = found["def"]
 		if pick.has("m"):
 			host.scene_view.music_row = pick.get("row", {})
 			host.scene_view.start_music(String(pick["m"]), String(pick["r"]))

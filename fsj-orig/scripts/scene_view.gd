@@ -199,16 +199,31 @@ func show_grade(grade: int, combo: int) -> void:
 	grade_age = 0.0
 
 # ---------------------------------------------------------------- input
+var _held_dirs: Array[int] = []
+
+func _dir_for_keycode(keycode: int) -> int:
+	match keycode:
+		KEY_LEFT, KEY_A: return 1
+		KEY_RIGHT, KEY_D: return 2
+		KEY_UP, KEY_W: return 4
+		KEY_DOWN, KEY_S: return 8
+	return 0
+
 func _unhandled_key_input(event: InputEvent) -> void:
-	if not active or not (event is InputEventKey) or not event.pressed or event.echo:
+	if not active or not (event is InputEventKey):
+		if not active and not _held_dirs.is_empty():
+			_held_dirs.clear()
 		return
-	var d := 0
-	match event.keycode:
-		KEY_LEFT, KEY_A: d = 1
-		KEY_RIGHT, KEY_D: d = 2
-		KEY_UP, KEY_W: d = 4
-		KEY_DOWN, KEY_S: d = 8
-	if event.keycode in [KEY_Q, KEY_SPACE] and on_skill.is_valid():
+	var d := _dir_for_keycode(event.keycode)
+	if not event.pressed:
+		if d != 0:
+			_held_dirs.erase(d)
+			if not _held_dirs.is_empty() and on_dir.is_valid():
+				on_dir.call(_held_dirs[_held_dirs.size() - 1])
+		return
+	if event.echo:
+		return
+	if event.keycode in [KEY_Q, KEY_E, KEY_J, KEY_SPACE] and on_skill.is_valid():
 		on_skill.call()
 		get_viewport().set_input_as_handled()
 		return
@@ -217,6 +232,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 	if d != 0 and on_dir.is_valid():
+		_held_dirs.erase(d)
+		_held_dirs.append(d)
 		on_dir.call(d)
 		get_viewport().set_input_as_handled()
 

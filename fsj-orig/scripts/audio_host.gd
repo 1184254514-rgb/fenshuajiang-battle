@@ -39,6 +39,7 @@ class SoundVoice:
 
 var _cache: Dictionary = {}
 var _warned_paths: Dictionary = {}
+var _last_play_ms: Dictionary = {}
 var _cache_clock: int = 0
 var _sounds: Dictionary = {}
 var _voices: Array[SoundVoice] = []
@@ -294,6 +295,12 @@ func sound_play(handle: int, looping: bool = false, restart: bool = true) -> boo
 	var stream := _get_stream(record.path, looping)
 	if stream == null:
 		return false
+	if not looping:
+		var now_ms := Time.get_ticks_msec()
+		var prev_ms := int(_last_play_ms.get(record.path, -1000))
+		if now_ms - prev_ms < 35:
+			return true
+		_last_play_ms[record.path] = now_ms
 	if existing != null:
 		# Restarting an auto-release sound must preserve its handle.
 		_detach_voice(record.slot, false)

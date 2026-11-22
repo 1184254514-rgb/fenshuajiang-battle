@@ -102,31 +102,47 @@ static func context_for(
 	context: Dictionary,
 	blend_overrides: Dictionary = {}
 ) -> Dictionary:
-	var controller: Variant = (host.get_meta(META) if host.has_meta(META) else null)
-	if not is_instance_valid(controller):
-		var added: EffectUnitsTrail = EffectUnitsTrail.new()
-		added.name = "EffectUnitsU1"
-		added._host = host
-		added._evaluation = evaluation
-		added._blend_overrides = blend_overrides
-		host.set_meta(META, added)
-		host.add_child(added)
-		for index in range(evaluation.units.size()):
-			var definition: Dictionary = evaluation.units[index]
-			var runtime: Node = create(definition, evaluation, index, host)
-			if runtime != null:
-				added._units[index] = runtime
-				added.add_child(runtime)
-		controller = added
-	controller._blend_overrides = blend_overrides
-	context["_u1_frame"] = Callable(controller, "resolve_frame")
-	context["_u1_tick"] = Callable(controller, "update")
+	if host.has_meta(META):
+		var existing: Variant = host.get_meta(META)
+		if existing == null:
+			return context
+		if is_instance_valid(existing):
+			var ctrl: EffectUnitsTrail = existing as EffectUnitsTrail
+			ctrl._blend_overrides = blend_overrides
+			context["_u1_frame"] = Callable(ctrl, "resolve_frame")
+			context["_u1_tick"] = Callable(ctrl, "update")
+			return context
+	var has_u1: bool = false
+	for def in evaluation.units:
+		if not type_of(def).is_empty():
+			has_u1 = true
+			break
+	if not has_u1:
+		host.set_meta(META, null)
+		return context
+	var added: EffectUnitsTrail = EffectUnitsTrail.new()
+	added.name = "EffectUnitsU1"
+	added._host = host
+	added._evaluation = evaluation
+	added._blend_overrides = blend_overrides
+	host.set_meta(META, added)
+	host.add_child(added)
+	for index in range(evaluation.units.size()):
+		var definition: Dictionary = evaluation.units[index]
+		var runtime: Node = create(definition, evaluation, index, host)
+		if runtime != null:
+			added._units[index] = runtime
+			added.add_child(runtime)
+	context["_u1_frame"] = Callable(added, "resolve_frame")
+	context["_u1_tick"] = Callable(added, "update")
 	return context
 
 
 static func has_tails(host: Node) -> bool:
-	var controller: Variant = (host.get_meta(META) if host.has_meta(META) else null)
-	if not is_instance_valid(controller):
+	if not host.has_meta(META):
+		return false
+	var controller: Variant = host.get_meta(META)
+	if controller == null or not is_instance_valid(controller):
 		return false
 	for value in controller._units.values():
 		var runtime: UnitRuntime = value
@@ -235,21 +251,19 @@ static func _handle_factor(dot_value: float) -> float:
 
 
 static func _mul_color(a: int, b: int) -> int:
-	var result: int = 0
-	for shift in [0, 8, 16, 24]:
-		var component: int = int(
-			float(((a >> shift) & 255) * ((b >> shift) & 255)) / 255.0
-		)
-		result |= component << shift
-	return result
+	var c0: int = int(float((a & 255) * (b & 255)) / 255.0)
+	var c1: int = int(float(((a >> 8) & 255) * ((b >> 8) & 255)) / 255.0)
+	var c2: int = int(float(((a >> 16) & 255) * ((b >> 16) & 255)) / 255.0)
+	var c3: int = int(float(((a >> 24) & 255) * ((b >> 24) & 255)) / 255.0)
+	return c0 | (c1 << 8) | (c2 << 16) | (c3 << 24)
 
 
 static func _add_color(a: int, b: int) -> int:
-	var result: int = 0
-	for shift in [0, 8, 16, 24]:
-		var component: int = mini(((a >> shift) & 255) + ((b >> shift) & 255), 255)
-		result |= component << shift
-	return result
+	var c0: int = mini((a & 255) + (b & 255), 255)
+	var c1: int = mini(((a >> 8) & 255) + ((b >> 8) & 255), 255)
+	var c2: int = mini(((a >> 16) & 255) + ((b >> 16) & 255), 255)
+	var c3: int = mini(((a >> 24) & 255) + ((b >> 24) & 255), 255)
+	return c0 | (c1 << 8) | (c2 << 16) | (c3 << 24)
 
 
 static func _alpha_color(packed: int, final_alpha: float) -> int:
@@ -457,28 +471,64 @@ class Batch extends RefCounted:
 			base, base + 1, base + 2, base, base + 2, base + 3
 		]))
 
+	func vertex_direct(
+		point: Vector3,
+		uv: Vector2,
+		tint: Color,
+		add: Color,
+		mix: Color,
+		domain: Vector2 = Vector2.ZERO
+	) -> int:
+		var index: int = vertices.size()
+		vertices.append(point)
+		coordinates.append(uv)
+		domains.append(domain)
+		tints.append(tint)
+		additions.append(add)
+		coefficients.append(mix)
+		return index
+
 	func data_image() -> Image:
-		var width: int = mini(EffectUnitsTrail.DATA_WIDTH, maxi(1, vertices.size()))
-		var groups: int = int(ceil(float(vertices.size()) / float(width)))
+		var count: int = vertices.size()
+		# Bucket width to stable powers of two so ImageTexture.update() reuses
+		# the existing GPU texture instead of reallocating it whenever vertex count fluctuates.
+		var width: int = 64
+		while width < count and width < EffectUnitsTrail.DATA_WIDTH:
+			width <<= 1
+		width = mini(EffectUnitsTrail.DATA_WIDTH, width)
+		var groups: int = maxi(1, int(ceil(float(count) / float(width))))
 		var height: int = maxi(4, groups * 4)
 		var values: PackedFloat32Array = PackedFloat32Array()
 		values.resize(width * height * 4)
-		for i in range(vertices.size()):
+		var w4: int = width * 4
+		for i in range(count):
 			var column: int = i % width
-			var row: int = int(float(i) / float(width)) * 4
+			var row: int = int(i / width) * 4
+			var base: int = (row * width + column) * 4
 			var uv: Vector2 = coordinates[i]
 			var domain: Vector2 = domains[i]
-			var records: Array = [
-				Color(uv.x, uv.y, domain.x, domain.y),
-				tints[i], additions[i], coefficients[i]
-			]
-			for j in range(4):
-				var offset: int = ((row + j) * width + column) * 4
-				var color_value: Color = records[j]
-				values[offset] = color_value.r
-				values[offset + 1] = color_value.g
-				values[offset + 2] = color_value.b
-				values[offset + 3] = color_value.a
+			values[base] = uv.x
+			values[base + 1] = uv.y
+			values[base + 2] = domain.x
+			values[base + 3] = domain.y
+			var o1: int = base + w4
+			var c1: Color = tints[i]
+			values[o1] = c1.r
+			values[o1 + 1] = c1.g
+			values[o1 + 2] = c1.b
+			values[o1 + 3] = c1.a
+			var o2: int = o1 + w4
+			var c2: Color = additions[i]
+			values[o2] = c2.r
+			values[o2 + 1] = c2.g
+			values[o2 + 2] = c2.b
+			values[o2 + 3] = c2.a
+			var o3: int = o2 + w4
+			var c3: Color = coefficients[i]
+			values[o3] = c3.r
+			values[o3 + 1] = c3.g
+			values[o3 + 2] = c3.b
+			values[o3 + 3] = c3.a
 		return Image.create_from_data(
 			width, height, false, Image.FORMAT_RGBAF, values.to_byte_array()
 		)
@@ -531,6 +581,30 @@ class UnitRuntime extends Node:
 	var _canvas_surface: CanvasMesh
 	var _batch_material: ShaderMaterial
 	var _data_texture: ImageTexture
+	var _reusable_mesh: ArrayMesh
+	var _encoded_uvs: PackedVector2Array = PackedVector2Array()
+	var _last_shader: Shader
+	var _tex_bound: bool = false
+	var _c_life: float = 1.0
+	var _c_one_sided: bool = false
+	var _c_trail_mode: int = 1
+	var _c_subdivisions: int = 4
+	var _c_uv_table: int = 0
+	var _c_blend: int = 1
+	var _c_depth: int = 2
+	var _c_brightness: float = 1.0
+	var _c_half_width: Vector2 = Vector2.ZERO
+	var _c_trail_dir: Vector3 = Vector3.UP
+	var _c_bone_name: String = ""
+	var _c_needs_bone: bool = false
+	var _c_bone_looked_up: bool = false
+	var _c_skel: Skeleton3D = null
+	var _c_bone_idx: int = -1
+	var _c_const_mix: bool = false
+	var _c_mix_color: Color = Color(1.0, 0.0, 0.0, 1.0)
+	var _c_const_add: bool = false
+	var _c_add_packed: int = 0
+	var _last_draw_wall_ms: float = -1000.0
 
 	var _samples: Array = []
 	var _retired: Array = []
@@ -538,6 +612,7 @@ class UnitRuntime extends Node:
 	var _tail: Dictionary = {}
 	var _control_out: Array = [Vector3.ZERO, Vector3.ZERO]
 	var _sample_serial: int = 0
+	var _last_pose_wall_ms: float = -1000.0
 
 	var _registered: bool = false
 	var _target_pending: bool = false
@@ -576,7 +651,41 @@ class UnitRuntime extends Node:
 		_texture = EffectUnitsTrail.Eval.texture_at(str(
 			unit.get("texture", properties.get("texture", ""))
 		))
-		_bone_resolved = not bool(unit.get("needs_bone", false))
+		_c_bone_name = str(properties.get("bone", unit.get("bone", "")))
+		_c_needs_bone = bool(unit.get("needs_bone", false)) or not _c_bone_name.is_empty()
+		_bone_resolved = not _c_needs_bone
+		_c_blend = _blend()
+		_c_depth = _depth()
+		_c_brightness = _brightness()
+		var t_hue: Array = EffectUnitsTrail.Eval.track_at(unit, "bytes", 0)
+		var t_bri: Array = EffectUnitsTrail.Eval.track_at(unit, "bytes", 1)
+		var t_sat: Array = EffectUnitsTrail.Eval.track_at(unit, "bytes", 2)
+		var is_const_byte := func(tr: Array) -> bool:
+			return tr.size() <= 1 or (tr.size() == 2 and int(tr[0][1]) == int(tr[1][1]))
+		if is_const_byte.call(t_hue) and is_const_byte.call(t_bri) and is_const_byte.call(t_sat):
+			_c_const_mix = true
+			var hv: float = EffectUnitsTrail.Eval.byte_track(unit, 0, 0.0)
+			var bv: float = EffectUnitsTrail.Eval.byte_track(unit, 1, 0.0)
+			var sv: float = EffectUnitsTrail.Eval.byte_track(unit, 2, 0.0)
+			_c_mix_color = EffectUnitsTrail._coefficients(hv, bv * _c_brightness, sv)
+		var t_add: Array = EffectUnitsTrail.Eval.track_at(unit, "colors", 1)
+		if t_add.size() <= 1 or (t_add.size() == 2 and int(t_add[0][1]) == int(t_add[1][1])):
+			_c_const_add = true
+			_c_add_packed = EffectUnitsTrail.Eval.packed_color_track(unit, 1, 0.0)
+		if type_name == "CPolyTrailProp":
+			_c_life = maxf(1.0, float(_prop("lifetime_ms", 0xd0, 1)))
+			_c_one_sided = bool(_prop("one_sided", 0xb1, false))
+			_c_trail_mode = int(_prop("uv_mode", 0xb2, 1))
+			var sub: int = maxi(1, int(_prop("subdivisions", 0x58, 1)))
+			_c_subdivisions = sub if _c_trail_mode == 0 else sub * 4
+			_c_half_width = _pair("half_width", 0xc4, 0.0, 0.0)
+			_c_trail_dir = EffectUnitsTrail._v3(_prop("direction", 0xb8, [0, 1, 0]), Vector3.UP)
+			var ti: int = 0
+			if bool(_prop("uv_swap", 0xb3, false)): ti |= 4
+			if bool(_prop("uv_positive_u", 0xb4, false)): ti |= 1
+			if bool(_prop("uv_positive_v", 0xb5, false)): ti |= 2
+			if _c_trail_mode == 0: ti = 7 - ti
+			_c_uv_table = ti
 
 	func _exit_tree() -> void:
 		for visual in [
@@ -693,7 +802,7 @@ class UnitRuntime extends Node:
 			"tint": EffectUnitsTrail.Eval.unpack_color(tint_value),
 			"add": EffectUnitsTrail.Eval.unpack_color(add_value),
 			"mix": EffectUnitsTrail._coefficients(
-				hue, brightness_track * _brightness(), saturation_track
+				hue, brightness_track * _c_brightness, saturation_track
 			),
 		}
 
@@ -710,29 +819,31 @@ class UnitRuntime extends Node:
 		q: float,
 		context: Dictionary
 	) -> Transform3D:
-		var bone_name: String = str(properties.get("bone", unit.get("bone", "")))
-		var needs_bone: bool = bool(unit.get("needs_bone", false)) or not bone_name.is_empty()
 		_bone_resolved = true
-		if needs_bone:
+		if _c_needs_bone:
 			var binding: Variant = null
 			var resolver: Callable = context.get("u1_attachment", Callable())
 			if resolver.is_valid():
 				binding = resolver.call(unit, index, parent_matrix, q, context)
-			elif not bone_name.is_empty():
-				# # ASSUMPTION: A named bone is searched below attachment_root,
-				# or below the effect host's parent when no resolver is provided.
-				var root: Variant = context.get("attachment_root", host.get_parent())
-				if is_instance_valid(root):
-					var candidates: Array = root.find_children("*", "Skeleton3D", true, false)
-					if root is Skeleton3D:
-						candidates.push_front(root)
-					for candidate in candidates:
-						var skeleton: Skeleton3D = candidate as Skeleton3D
-						var bone_index: int = skeleton.find_bone(bone_name)
-						if bone_index >= 0:
-							binding = skeleton.global_transform \
-								* skeleton.get_bone_global_pose(bone_index)
-							break
+			elif not _c_bone_name.is_empty():
+				if not _c_bone_looked_up or (_c_skel != null and not is_instance_valid(_c_skel)):
+					_c_bone_looked_up = true
+					_c_skel = null
+					_c_bone_idx = -1
+					var root: Variant = context.get("attachment_root", host.get_parent())
+					if is_instance_valid(root):
+						var candidates: Array = root.find_children("*", "Skeleton3D", true, false)
+						if root is Skeleton3D:
+							candidates.push_front(root)
+						for candidate in candidates:
+							var skeleton: Skeleton3D = candidate as Skeleton3D
+							var bone_index: int = skeleton.find_bone(_c_bone_name)
+							if bone_index >= 0:
+								_c_skel = skeleton
+								_c_bone_idx = bone_index
+								break
+				if _c_skel != null and _c_bone_idx >= 0:
+					binding = _c_skel.global_transform * _c_skel.get_bone_global_pose(_c_bone_idx)
 			if binding is Transform3D:
 				parent_matrix = evaluation._binding_matrix(
 					binding, int(unit.get("link", 0)), context
@@ -804,13 +915,23 @@ class UnitRuntime extends Node:
 		match type_name:
 			"CPolyTrailProp":
 				_update_trail(at_ms, wall_ms, active_delta)
-				_draw_trail(wall_ms)
+				if _world_surface != null and wall_ms - _last_draw_wall_ms < 22.0:
+					if host is Node3D and absf(host.global_transform.basis.determinant()) > 0.000000001:
+						_world_surface.transform = host.global_transform.affine_inverse()
+				else:
+					_last_draw_wall_ms = wall_ms
+					_draw_trail(wall_ms)
 			"CPolyChainProp":
 				_update_chain(at_ms, wall_ms, active_delta)
 			"CGeometryProp":
 				if _active(at_ms):
 					_update_geometry_uv(active_delta)
-					_draw_geometry()
+					if _world_surface != null and _world_surface.visible and wall_ms - _last_draw_wall_ms < 22.0:
+						if host is Node3D and absf(host.global_transform.basis.determinant()) > 0.000000001:
+							_world_surface.transform = host.global_transform.affine_inverse()
+					else:
+						_last_draw_wall_ms = wall_ms
+						_draw_geometry()
 				else:
 					_hide_surfaces()
 			"CEffectAttachMesh":
@@ -838,10 +959,12 @@ class UnitRuntime extends Node:
 			return
 
 		var positions: PackedVector3Array = batch.vertices
-		var encoded_uvs: PackedVector2Array = PackedVector2Array()
-		encoded_uvs.resize(positions.size())
-		for i in range(positions.size()):
-			encoded_uvs[i] = Vector2(float(i), 0)
+		var pos_count: int = positions.size()
+		if _encoded_uvs.size() != pos_count:
+			_encoded_uvs.resize(pos_count)
+			for i in range(pos_count):
+				_encoded_uvs[i] = Vector2(float(i), 0.0)
+		var encoded_uvs: PackedVector2Array = _encoded_uvs
 
 		var world: bool = not _is_canvas()
 		if world:
@@ -874,8 +997,12 @@ class UnitRuntime extends Node:
 		arrays[Mesh.ARRAY_VERTEX] = positions
 		arrays[Mesh.ARRAY_TEX_UV] = encoded_uvs
 		arrays[Mesh.ARRAY_INDEX] = batch.indices
-		var mesh: ArrayMesh = ArrayMesh.new()
-		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		if _reusable_mesh == null:
+			_reusable_mesh = ArrayMesh.new()
+		else:
+			_reusable_mesh.clear_surfaces()
+		_reusable_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		var mesh: ArrayMesh = _reusable_mesh
 
 		var image: Image = batch.data_image()
 		if _data_texture == null:
@@ -890,22 +1017,32 @@ class UnitRuntime extends Node:
 
 		if _batch_material == null:
 			_batch_material = ShaderMaterial.new()
-		_batch_material.shader = EffectUnitsTrail._shader(
-			world, EffectUnitsTrail._blend_name(_blend(), _overrides), _depth(), false
+			_batch_material.render_priority = clampi(index, -128, 127)
+			_tex_bound = false
+		var target_shader: Shader = EffectUnitsTrail._shader(
+			world, EffectUnitsTrail._blend_name(_c_blend, _overrides), _c_depth, false
 		)
-		_batch_material.render_priority = clampi(index, -128, 127)
-		_batch_material.set_shader_parameter("vertex_data", _data_texture)
-		_batch_material.set_shader_parameter("vertex_data_width", image.get_width())
-		_batch_material.set_shader_parameter("image_texture", _texture)
-		_batch_material.set_shader_parameter("geometry_enabled", not geometry_parameters.is_empty())
-		if not geometry_parameters.is_empty():
-			_batch_material.set_shader_parameter("clip_window", geometry_parameters["clip"])
-			_batch_material.set_shader_parameter("edge_alpha", geometry_parameters["alpha"])
-			_batch_material.set_shader_parameter("edge_power", geometry_parameters["power"])
+		if _last_shader != target_shader:
+			_batch_material.shader = target_shader
+			_last_shader = target_shader
+			_tex_bound = false
+		if not _tex_bound:
+			_batch_material.set_shader_parameter(&"vertex_data", _data_texture)
+			_batch_material.set_shader_parameter(&"image_texture", _texture)
+			_tex_bound = true
+		_batch_material.set_shader_parameter(&"vertex_data_width", image.get_width())
+		var has_geo: bool = not geometry_parameters.is_empty()
+		_batch_material.set_shader_parameter(&"geometry_enabled", has_geo)
+		if has_geo:
+			_batch_material.set_shader_parameter(&"clip_window", geometry_parameters["clip"])
+			_batch_material.set_shader_parameter(&"edge_alpha", geometry_parameters["alpha"])
+			_batch_material.set_shader_parameter(&"edge_power", geometry_parameters["power"])
 
 		if world:
-			_world_surface.mesh = mesh
-			_world_surface.material_override = _batch_material
+			if _world_surface.mesh != mesh:
+				_world_surface.mesh = mesh
+			if _world_surface.material_override != _batch_material:
+				_world_surface.material_override = _batch_material
 			_world_surface.show()
 		else:
 			_canvas_surface.drawing_mesh = mesh
@@ -919,17 +1056,16 @@ class UnitRuntime extends Node:
 	# ------------------------------------------------------------------
 
 	func _trail_life() -> float:
-		return maxf(1.0, float(_prop("lifetime_ms", 0xd0, 1)))
+		return _c_life
 
 	func _one_sided() -> bool:
-		return bool(_prop("one_sided", 0xb1, false))
+		return _c_one_sided
 
 	func _trail_mode() -> int:
-		return int(_prop("uv_mode", 0xb2, 1))
+		return _c_trail_mode
 
 	func _trail_subdivisions() -> int:
-		var subdivisions: int = maxi(1, int(_prop("subdivisions", 0x58, 1)))
-		return subdivisions if _trail_mode() == 0 else subdivisions * 4
+		return _c_subdivisions
 
 	func _sample(time_value: float, position_value: Vector3, direction: Vector3) -> Dictionary:
 		_sample_serial += 1
@@ -943,18 +1079,18 @@ class UnitRuntime extends Node:
 	func _sample_index(sample: Dictionary) -> int:
 		if sample.is_empty():
 			return -1
-		for i in range(_samples.size()):
-			if int(_samples[i]["id"]) == int(sample["id"]):
+		var target_id: int = int(sample["id"])
+		for i in range(_samples.size() - 1, -1, -1):
+			if int(_samples[i]["id"]) == target_id:
 				return i
 		return -1
 
 	func _edges(sample: Dictionary) -> Array:
-		var limits: Vector2 = _pair("half_width", 0xc4, 0.0, 0.0)
-		var width_vector: Vector3 = sample["direction"] * limits.y * _scale()
+		var width_vector: Vector3 = sample["direction"] * _c_half_width.y * _scale()
 		var position_value: Vector3 = sample["position"]
 		return [
 			position_value + width_vector,
-			position_value if _one_sided() else position_value - width_vector
+			position_value if _c_one_sided else position_value - width_vector
 		]
 
 	func _write_edges(
@@ -994,10 +1130,7 @@ class UnitRuntime extends Node:
 		if leaving or not _active(at_ms) or _percent >= 1.0 or active_delta <= 0.0:
 			return
 
-		var local_direction: Vector3 = EffectUnitsTrail._v3(
-			_prop("direction", 0xb8, [0, 1, 0]), Vector3.UP
-		)
-		var direction: Vector3 = EffectUnitsTrail._normal(_xf.basis * local_direction)
+		var direction: Vector3 = EffectUnitsTrail._normal(_xf.basis * _c_trail_dir)
 		if direction == Vector3.ZERO:
 			# # ASSUMPTION: Invalid zero directions retain the previous direction.
 			direction = Vector3.UP if _tail.is_empty() else _tail["direction"]
@@ -1007,7 +1140,15 @@ class UnitRuntime extends Node:
 				# A stationary emitter refreshes the final sample timestamp.
 				_tail["time"] = wall_ms
 				return
+			# Cap trail pose insertion to ~45 Hz (smoother than the original 30 Hz
+			# engine) so high-FPS frames don't multiply bezier ribbon samples 4x.
+			if wall_ms - _last_pose_wall_ms < 22.0:
+				_tail["position"] = _xf.origin
+				_tail["direction"] = direction
+				_tail["time"] = wall_ms
+				return
 
+		_last_pose_wall_ms = wall_ms
 		var next_sample: Dictionary = _sample(wall_ms, _xf.origin, direction)
 		if _tail.is_empty():
 			var first: Dictionary = _sample(wall_ms, _xf.origin, direction)
@@ -1097,33 +1238,29 @@ class UnitRuntime extends Node:
 		_tail = next_sample
 
 	func _trail_uv(uv: Vector2) -> Vector2:
-		var table_index: int = 0
-		if bool(_prop("uv_swap", 0xb3, false)):
-			table_index |= 4
-		if bool(_prop("uv_positive_u", 0xb4, false)):
-			table_index |= 1
-		if bool(_prop("uv_positive_v", 0xb5, false)):
-			table_index |= 2
-		if _trail_mode() == 0:
-			table_index = 7 - table_index
+		var table_index: int = _c_uv_table
 		var result: Vector2 = Vector2(uv.y, uv.x) if (table_index & 4) != 0 else uv
 		result.x *= 1.0 if (table_index & 1) != 0 else -1.0
 		result.y *= 1.0 if (table_index & 2) != 0 else -1.0
 		return result
 
-	func _trail_style(age: float, emitter_percent: float) -> Dictionary:
-		var emitter_tint: int = EffectUnitsTrail.Eval.packed_color_track(
-			unit, 2, emitter_percent
-		)
-		emitter_tint = EffectUnitsTrail._alpha_color(emitter_tint, _final_alpha())
+	func _trail_style_fast(age: float, emitter_tint: int, emitter_add: int) -> Dictionary:
 		var tint_value: int = EffectUnitsTrail._mul_color(
 			EffectUnitsTrail.Eval.packed_color_track(unit, 0, age), emitter_tint
 		)
 		var additive: int = EffectUnitsTrail._add_color(
 			EffectUnitsTrail.Eval.packed_color_track(unit, 1, age),
-			EffectUnitsTrail.Eval.packed_color_track(unit, 3, emitter_percent)
+			emitter_add
 		)
 		return _style(age, tint_value, additive)
+
+	func _trail_style(age: float, emitter_percent: float) -> Dictionary:
+		var emitter_tint: int = EffectUnitsTrail._alpha_color(
+			EffectUnitsTrail.Eval.packed_color_track(unit, 2, emitter_percent),
+			_final_alpha()
+		)
+		var emitter_add: int = EffectUnitsTrail.Eval.packed_color_track(unit, 3, emitter_percent)
+		return _trail_style_fast(age, emitter_tint, emitter_add)
 
 	func _draw_trail(wall_ms: float) -> void:
 		var batch: Batch = Batch.new()
@@ -1138,33 +1275,52 @@ class UnitRuntime extends Node:
 		wall_ms: float,
 		emitter_percent: float
 	) -> void:
-		if samples.size() < 2 or _texture == null:
+		var scount: int = samples.size()
+		if scount < 2 or _texture == null:
 			return
 		var aspect: float = float(_texture.get_height()) / maxf(1.0, _texture.get_width())
 		var along: float = aspect
+		var trail_mode: int = _c_trail_mode
+		var one_sided: bool = _c_one_sided
+		var life: float = _c_life
+		var sc_val: float = _scale()
+		var hw_min: float = _c_half_width.x
+		var hw_max: float = _c_half_width.y
 		var increment: float = (
-			1.0 / float(samples.size() - 1) if _trail_mode() == 2 else 0.25
+			1.0 / float(scount - 1) if trail_mode == 2 else 0.25
 		)
+		var emitter_tint: int = EffectUnitsTrail._alpha_color(
+			EffectUnitsTrail.Eval.packed_color_track(unit, 2, emitter_percent),
+			_final_alpha()
+		)
+		var emitter_add: int = EffectUnitsTrail.Eval.packed_color_track(unit, 3, emitter_percent)
+		var parent_hue: float = float(_context.get("parent_hue", 0.0))
+		var use_fast_mix: bool = _c_const_mix and is_zero_approx(parent_hue)
+		var const_mix: Color = _c_mix_color
+		var use_fast_add: bool = _c_const_add
+		var const_add_color: Color = EffectUnitsTrail.Eval.unpack_color(
+			EffectUnitsTrail._add_color(_c_add_packed, emitter_add)
+		) if use_fast_add else Color(0, 0, 0, 0)
 		var previous_pair: Vector2i = Vector2i(-1, -1)
 
-		for i in range(samples.size()):
+		for i in range(scount):
 			var sample: Dictionary = samples[i]
 			var age: float = clampf(
-				(wall_ms - float(sample["time"])) / _trail_life(), 0.0, 1.0
+				(wall_ms - float(sample["time"])) / life, 0.0, 1.0
 			)
-			var width: float = _range_value("half_width", 0xc4, 3, age, 0.0, 0.0) * _scale()
+			var width: float = lerpf(hw_min, hw_max, EffectUnitsTrail.Eval.byte_track(unit, 3, age)) * sc_val
 			var side: Vector3 = sample["direction"] * width
 			var position_value: Vector3 = sample["position"]
-			var style: Dictionary = _trail_style(age, emitter_percent)
 
-			if _trail_mode() == 0:
+			if trail_mode == 0:
 				if i == 0:
 					continue
+				var style: Dictionary = _trail_style_fast(age, emitter_tint, emitter_add)
 				var previous: Dictionary = samples[i - 1]
 				var backwards: Vector3 = EffectUnitsTrail._normal(
 					position_value - Vector3(previous["position"])
 				) * aspect * width
-				var positive_side: Vector3 = Vector3.ZERO if _one_sided() else side
+				var positive_side: Vector3 = Vector3.ZERO if one_sided else side
 				batch.quad(
 					[
 						position_value - backwards - side,
@@ -1179,18 +1335,34 @@ class UnitRuntime extends Node:
 					[style, style, style, style]
 				)
 			else:
-				var first: int = batch.vertex(
-					position_value if _one_sided() else position_value + side,
-					_trail_uv(Vector2(along, 0)), style
+				var tint_val: int = EffectUnitsTrail._mul_color(
+					EffectUnitsTrail.Eval.packed_color_track(unit, 0, age), emitter_tint
 				)
-				var second: int = batch.vertex(
-					position_value - side, _trail_uv(Vector2(along, 1)), style
+				var tint_col: Color = EffectUnitsTrail.Eval.unpack_color(tint_val)
+				var add_col: Color = const_add_color if use_fast_add else EffectUnitsTrail.Eval.unpack_color(
+					EffectUnitsTrail._add_color(
+						EffectUnitsTrail.Eval.packed_color_track(unit, 1, age), emitter_add
+					)
+				)
+				var mix_col: Color = const_mix if use_fast_mix else EffectUnitsTrail._coefficients(
+					EffectUnitsTrail.Eval.byte_track(unit, 0, age) + parent_hue,
+					EffectUnitsTrail.Eval.byte_track(unit, 1, age) * _c_brightness,
+					EffectUnitsTrail.Eval.byte_track(unit, 2, age)
+				)
+				var first: int = batch.vertex_direct(
+					position_value if one_sided else position_value + side,
+					_trail_uv(Vector2(along, 0)), tint_col, add_col, mix_col
+				)
+				var second: int = batch.vertex_direct(
+					position_value - side, _trail_uv(Vector2(along, 1)), tint_col, add_col, mix_col
 				)
 				if previous_pair.x >= 0:
-					batch.indices.append_array(PackedInt32Array([
-						previous_pair.x, previous_pair.y, second,
-						previous_pair.x, second, first
-					]))
+					batch.indices.append(previous_pair.x)
+					batch.indices.append(previous_pair.y)
+					batch.indices.append(second)
+					batch.indices.append(previous_pair.x)
+					batch.indices.append(second)
+					batch.indices.append(first)
 				previous_pair = Vector2i(first, second)
 				along += increment
 

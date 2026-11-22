@@ -33,6 +33,29 @@ function H.RequestExit()
   end
  })
 end
+local function set_show(w, v)
+ if not w then return end
+ v = v and true or false
+ if w.__bh_show ~= v then w.__bh_show = v; w:ShowWnd(v) end
+end
+local function set_text(w, v)
+ if not w then return end
+ v = tostring(v)
+ if w.__bh_text ~= v then w.__bh_text = v; w:SetWndText(v) end
+end
+local function set_enable(w, v)
+ if not w then return end
+ v = v and true or false
+ if w.__bh_enable ~= v then w.__bh_enable = v; w:EnableWnd(v) end
+end
+local function set_range(w, v)
+ if not w then return end
+ if w.__bh_range ~= v then w.__bh_range = v; w:SetRange(v) end
+end
+local function set_pos(w, v)
+ if not w then return end
+ if w.__bh_pos ~= v then w.__bh_pos = v; w:SetPos(v) end
+end
 function H.Sync()
  local sc=g_App and g_App.__scene
  if not timed(sc) then return end
@@ -40,6 +63,52 @@ function H.Sync()
  local b=gm and gm.m_pGameButton
  if not b or not b.m_pBtnSkill or not gm.m_pWndGameTime then return end
  local p=sc.m_pDirectorObj
+ if gm.__bh_scene ~= sc then
+  gm.__bh_scene = sc
+  gm.__bh_refs = {
+   shengyushijian = gm:GetDlgChild('shengyushijian'),
+   clock_title = gm:GetDlgChild('W_youxishijian.biaoti'),
+   clock_box = gm:GetDlgChild('W_youxishijian'),
+   xinhao = gm:GetDlgChild('W_xinhao'),
+   xinhao_lv = gm:GetDlgChild('W_xinhao.lv'),
+   xinhao_huang = gm:GetDlgChild('W_xinhao.huang'),
+   xinhao_hong = gm:GetDlgChild('W_xinhao.hong'),
+   xinhao_shuzi = gm:GetDlgChild('W_xinhao.shuzi'),
+   b_jineng = b:GetDlgChild('B_jineng'),
+   b_jineng_lv = b:GetDlgChild('B_jineng.dengji'),
+   jineng_box = b:GetDlgChild('jineng'),
+   rank1_self = gm.m_pWndRank1 and gm.m_pWndRank1:GetDlgChild('xinxi.zhujue'),
+   passive_lv = {
+    b.m_tblWndPassive[1] and b.m_tblWndPassive[1]:GetDlgChild('dengji'),
+    b.m_tblWndPassive[2] and b.m_tblWndPassive[2]:GetDlgChild('dengji'),
+    b.m_tblWndPassive[3] and b.m_tblWndPassive[3]:GetDlgChild('dengji'),
+   },
+  }
+  for _, w in pairs(gm.__bh_refs) do
+   if type(w) == 'table' and w.__node then w.__bh_show, w.__bh_text, w.__bh_enable, w.__bh_range, w.__bh_pos = nil, nil, nil, nil, nil end
+  end
+  for _, w in ipairs({gm.m_wndExpProgress, gm.m_pWndGameTime, b.m_pBtnSkill, gm.m_pWndTaskTips, gm.m_pWndTask}) do
+   if w then w.__bh_show, w.__bh_text, w.__bh_enable, w.__bh_range, w.__bh_pos = nil, nil, nil, nil, nil end
+  end
+  for i = 1, 3 do
+   local s = b.m_tblWndPassive[i]
+   if s then s.__bh_show, s.__bh_text = nil, nil end
+   local plv = gm.__bh_refs.passive_lv[i]
+   if plv then plv.__bh_text = nil end
+  end
+  local refs = gm.__bh_refs
+  set_show(refs.shengyushijian, false)
+  set_text(refs.clock_title, g_App:GetString('daojishi'))
+  local tip=gm.m_pWndTaskTips
+  if tip then
+   set_show(tip, false)
+   for _,key in ipairs({'m_tipTick','m_ShrinkTick'}) do
+    local tick=rawget(tip,key);if tick then tick:Stop() end
+   end
+  end
+  set_show(gm.m_pWndTask, false)
+ end
+ local refs = gm.__bh_refs
  if p and SceneProgression then
   local xp=p.__progress_exp or 0;local r=SceneProgression.Row(xp)
   local serial=p.__progress_serial or 0
@@ -57,48 +126,39 @@ function H.Sync()
   if gm.__xp_effect_until and (sc.__time or 0)>=gm.__xp_effect_until then
    gm.m_wndLevelUp:ShowWnd(false);gm.__xp_effect_until=nil
   end
-  gm.m_wndExpProgress:ShowWnd(not sc.__match_finished)
-  gm.m_wndExpProgress:SetWndText(tostring(r.level))
-  gm.m_wndExpProgress:SetRange(math.max(1,r.curExp))
-  gm.m_wndExpProgress:SetPos(r.curExp==0 and 1 or math.min(r.curExp,xp-r.wholeExp))
+  set_show(gm.m_wndExpProgress, not sc.__match_finished)
+  set_text(gm.m_wndExpProgress, r.level)
+  set_range(gm.m_wndExpProgress, math.max(1,r.curExp))
+  set_pos(gm.m_wndExpProgress, r.curExp==0 and 1 or math.min(r.curExp,xp-r.wholeExp))
  end
- -- APK CGameMain::Start 0x38ba34 hides +0x54 (shengyushijian) and
- -- uses CStringConfig['daojishi'] for the timed clock title.
- gm:GetDlgChild('shengyushijian'):ShowWnd(false)
- gm:GetDlgChild('W_youxishijian.biaoti'):SetWndText(g_App:GetString('daojishi'))
  local network=SceneLAN and SceneLAN.active or false
- gm:GetDlgChild('W_xinhao'):ShowWnd(network)
+ set_show(refs.xinhao, network)
  if network then
-  gm:GetDlgChild('W_xinhao.lv'):ShowWnd(true)
-  gm:GetDlgChild('W_xinhao.huang'):ShowWnd(false)
-  gm:GetDlgChild('W_xinhao.hong'):ShowWnd(false)
-  gm:GetDlgChild('W_xinhao.shuzi'):SetWndText('--')
+  set_show(refs.xinhao_lv, true)
+  set_show(refs.xinhao_huang, false)
+  set_show(refs.xinhao_hong, false)
+  set_text(refs.xinhao_shuzi, '--')
  end
  if gm.m_pBtnClose and not gm.__battle_exit_bound then
   gm.__battle_exit_bound=true
   gm.m_pBtnClose:RemoveActionListener('OnExitScene',gm)
   gm.m_pBtnClose:AddActionListener(H.RequestExit)
  end
- local tip=gm.m_pWndTaskTips
- if tip then
-  tip:ShowWnd(false)
-  for _,key in ipairs({'m_tipTick','m_ShrinkTick'}) do
-   local tick=rawget(tip,key);if tick then tick:Stop() end
-  end
- end
- if gm.m_pWndTask then gm.m_pWndTask:ShowWnd(false) end
  -- Countdown occupies the exact APK W_youxishijian position and text style.
- gm:GetDlgChild('W_youxishijian'):ShowWnd(not sc.__match_finished)
+ set_show(refs.clock_box, not sc.__match_finished)
  local seconds=math.ceil(SceneMatch.GetTimeRemain(sc)/1000)
- gm.m_pWndGameTime:SetWndText(string.format('%02d:%02d',math.floor(seconds/60),seconds%60))
+ if gm.__bh_clock_sec ~= seconds then
+  gm.__bh_clock_sec = seconds
+  set_text(gm.m_pWndGameTime, string.format('%02d:%02d',math.floor(seconds/60),seconds%60))
+ end
  if not p or not sc.__started or sc.__match_finished then return end
  local deathTip=gm.m_pWndTyro
  if deathTip and deathTip.m_wndContent and not network then
   if not p.__alive then
    local death=p.__last_death or {};local who=death.killer or ''
    local reason=death.reason=='body' and '撞到护盾' or death.reason=='territory' and '领地被全部占完' or death.reason=='capture' and '脚下领地被圈占' or death.reason=='anchor' and '路线连接点被圈占' or death.reason=='trail' and '路线被切断' or '死亡原因待核对'
-   deathTip.m_wndContent:SetWndText(reason..(who~='' and (' · '..who) or '')..'\n'..math.ceil(SceneMatch.RespawnRemaining(sc,p)/1000)..'秒后重生')
-   deathTip:ShowWnd(true);gm.__death_notice=true
+   set_text(deathTip.m_wndContent, reason..(who~='' and (' · '..who) or '')..'\n'..math.ceil(SceneMatch.RespawnRemaining(sc,p)/1000)..'秒后重生')
+   if not gm.__death_notice then deathTip:ShowWnd(true);gm.__death_notice=true end
   elseif gm.__death_notice then deathTip:ShowWnd(false);gm.__death_notice=nil end
  end
  local rows=catalog()
@@ -109,24 +169,79 @@ function H.Sync()
   image(button,rows[id])
   -- Godot picks Controls by sibling order, independently of visual z_index.
   -- Native skill input must precede the full-screen steering sibling.
-  b.__node:move_child(b:GetDlgChild('B_jineng').__node,b.__node:get_child_count()-1)
+  b.__node:move_child(refs.b_jineng.__node,b.__node:get_child_count()-1)
  end
- b:GetDlgChild('B_jineng'):ShowWnd(true)
- button:ShowWnd(true)
+ set_show(refs.b_jineng, true)
+ set_show(button, true)
  local cooldown=p:GetSkillWaitTime(id)
- button:EnableWnd(p.__alive and cooldown<=0)
- button:SetWndText(cooldown>0 and tostring(math.ceil(cooldown/1000)) or '')
- b:GetDlgChild('B_jineng.dengji'):SetWndText((p.__skill_level or 1)>=6 and g_App:GetString('levelmax') or (p.__skill_level or 1))
- b:GetDlgChild('jineng'):ShowWnd(true)
+ local now_ms = sc.__time or 0
+ local cast_life = tonumber(p.__skill_cast_lifetime) or 0
+ local active_end = tonumber(p.__skill_active_end) or 0
+ local active_rem = (p.__alive and cast_life > 0 and active_end > now_ms) and (active_end - now_ms) or 0
+ local is_active = active_rem > 0
+ local active_ratio = is_active and (active_rem / cast_life) or 0
+ local cd_total = math.max(1, tonumber(p.__skill_cd_total) or cooldown)
+ local is_cd = cooldown > 0
+ local cd_ratio = is_cd and math.min(1, cooldown / cd_total) or 0
+ local cd_sec = is_cd and math.ceil(cooldown / 1000) or 0
+ set_enable(button, p.__alive and cooldown<=0)
+ -- Let SkillFuseOverlay draw the crisp outlined countdown + burning fuse ring cleanly;
+ -- keep native button text empty so digits never double-draw.
+ local hud_fx = Host and Host.scene_view and Host.scene_view.hud_fx
+ if hud_fx and button.__node then
+  set_text(button, '')
+  hud_fx:set_skill_fuse(button.__node, active_ratio, cd_ratio, is_active, is_cd, cd_sec, tonumber(p.__skill_cast_serial) or 0)
+  if button.__bh_was_cd and not is_cd and p.__alive then
+   button:AddEffect('fx/cfg/cf_cd.eft', 'fx/loop', 'cf_cd', 0)
+  end
+  button.__bh_was_cd = is_cd
+ else
+  set_text(button, is_cd and tostring(cd_sec) or '')
+ end
+ set_text(refs.b_jineng_lv, (p.__skill_level or 1)>=6 and g_App:GetString('levelmax') or (p.__skill_level or 1))
+ set_show(refs.jineng_box, true)
+ -- Hide duplicate bottom self-rank row when director is already shown in the top-5 list (checked every 250ms).
+ if refs.rank1_self and SceneMatch and SceneMatch.GetPlayerRank then
+  if not gm.__bh_rank_at or now_ms - gm.__bh_rank_at >= 250 then
+   gm.__bh_rank_at = now_ms
+   local my_rank = SceneMatch.GetPlayerRank(sc, p.__objectID)
+   set_show(refs.rank1_self, my_rank == 0 or my_rank > 5)
+  end
+ end
+ -- Keep off-screen 1st/2nd/3rd track arrows from overlapping the bottom-right skill button.
+ local tips = gm.m_aryTrackTip
+ if tips and refs.b_jineng and refs.b_jineng.__node then
+  local sk = refs.b_jineng.__node
+  local sk_x0 = sk.global_position.x - 16
+  local sk_y0 = sk.global_position.y - 16
+  for ti = 1, 3 do
+   local tip = tips[ti]
+   if tip and tip.__node and tip.__node.visible then
+    local tn = tip.__node
+    local gp = tn.global_position
+    local tw = tn.size.x > 0 and tn.size.x or 64
+    local th = tn.size.y > 0 and tn.size.y or 64
+    if gp.x + tw > sk_x0 and gp.y + th > sk_y0 then
+     local push_left = (gp.x + tw) - sk_x0
+     local push_up = (gp.y + th) - sk_y0
+     if push_up <= push_left then
+      tn:set_pos(tn.position.x, tn.position.y - push_up - 8)
+     else
+      tn:set_pos(tn.position.x - push_left - 8, tn.position.y)
+     end
+    end
+   end
+  end
+ end
  for i=1,3 do
   local slot=b.m_tblWndPassive[i]
   local pid=(p.__skill_passives or {})[i] or 0
   if slot then
-   slot:ShowWnd(pid~=0)
+   set_show(slot, pid~=0)
    if pid~=0 then
     if slot.__hud_skill~=pid then slot.__hud_skill=pid;image(slot,rows[pid]) end
     local lv=(p.__skill_passive_levels or {})[i] or 1
-    slot:GetDlgChild('dengji'):SetWndText(lv>=6 and g_App:GetString('levelmax') or lv)
+    set_text(refs.passive_lv[i], lv>=6 and g_App:GetString('levelmax') or lv)
    end
   end
  end

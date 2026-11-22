@@ -173,6 +173,11 @@ func _process(delta: float) -> void:
 	_notice_left = maxf(0.0, _notice_left - delta)
 	if previous_notice > 0.0 and _notice_left == 0.0: _last_state = ""
 	if _poll_left > 0.0 or host == null or host.lua == null: return
+	if not _menu_layer.visible and _notice_left == 0.0:
+		_poll_left = 0.25
+		var open_flag = host.lua.do_string("return SceneSkills and SceneSkills.menu_open == true or false")
+		if open_flag != true:
+			return
 	_poll_left = 0.1
 	var result = host.lua.do_string("return SceneSkills and SceneSkills.GetHUDJSON() or '{}' ")
 	if result is LuaError:

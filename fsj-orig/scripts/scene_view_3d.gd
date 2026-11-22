@@ -1256,25 +1256,37 @@ func _update_press(_delta: float) -> void:
 	var extent := int(float(radius_px) / NODE)
 	var positions: Dictionary = {}
 
+	var cam_x := cam_target.x * NODE
+	var cam_y := cam_target.z * NODE
+	var press_cull_r2 := 42.0 * NODE * 42.0 * NODE
+
 	for id in players:
 		var player: Dictionary = players[id]
 		if bool(player["alive"]):
-			positions[id] = _press_native_position(player)
+			var ppos := _press_native_position(player)
+			var pdx := ppos.x - cam_x
+			var pdy := ppos.y - cam_y
+			if bool(player.get("director", false)) or pdx * pdx + pdy * pdy <= press_cull_r2:
+				positions[id] = ppos
 
 	# Constructor/SetParentChangedTime resets matter even without movement.
-	for key in _pressed.keys():
-		var idx := int(key)
-		if idx < 0 or idx >= gw * gh:
-			_press_native_set_cap(idx, 255, dirty)
-			continue
+	if not _pressed.is_empty():
+		var stale_pressed: Array[int] = []
+		for key in _pressed:
+			var idx := int(key)
+			if idx < 0 or idx >= gw * gh:
+				stale_pressed.append(idx)
+				continue
 
-		var token: Array = _press_native_cap_parents.get(idx, [])
-		if (
-			token.size() != 2
-			or owner_cells[idx] == 0
-			or int(token[0]) != int(owner_cells[idx])
-			or float(token[1]) != float(_capture_time[idx])
-		):
+			var token: Array = _press_native_cap_parents.get(idx, [])
+			if (
+				token.size() != 2
+				or owner_cells[idx] == 0
+				or int(token[0]) != int(owner_cells[idx])
+				or float(token[1]) != float(_capture_time[idx])
+			):
+				stale_pressed.append(idx)
+		for idx in stale_pressed:
 			_press_native_set_cap(idx, 255, dirty)
 
 	for id in _press_sources:
@@ -1367,33 +1379,44 @@ func _press_native_write_disk(
 	var x1 := mini(gw - 1, cell.x + extent)
 	var y0 := maxi(0, cell.y - extent)
 	var y1 := mini(gh - 1, cell.y + extent)
+	var fbuf := _press_native_f32_buffer
+	var px := position_px.x
+	var py := position_px.y
+	var r_sq_f := float(radius_px * radius_px)
 
-	for x in range(x0, x1 + 1):
-		for y in range(y0, y1 + 1):
-			var idx := y * gw + x
+	for y in range(y0, y1 + 1):
+		var row_base := y * gw
+		fbuf[0] = (float(y) + 0.5) * NODE
+		var cy := fbuf[0]
+		fbuf[0] = py - cy
+		var dy := fbuf[0]
+		fbuf[0] = dy * dy
+		var dy2 := fbuf[0]
+		for x in range(x0, x1 + 1):
+			var idx := row_base + x
 			if owner_cells[idx] == 0:
 				continue
 
-			var centre_x := _press_native_f32((float(x) + 0.5) * NODE)
-			var centre_y := _press_native_f32((float(y) + 0.5) * NODE)
-			var dx := _press_native_f32(position_px.x - centre_x)
-			var dy := _press_native_f32(position_px.y - centre_y)
-			var distance_squared := _press_native_f32(
-				_press_native_f32(dy * dy)
-				+ _press_native_f32(dx * dx)
-			)
-			var distance := _press_native_f32(sqrt(distance_squared))
-
+			fbuf[0] = (float(x) + 0.5) * NODE
+			var dx := px - fbuf[0]
+			fbuf[0] = dx
+			dx = fbuf[0]
+			fbuf[0] = dx * dx
+			fbuf[0] = dy2 + fbuf[0]
+			if fbuf[0] >= r_sq_f:
+				continue
+			fbuf[0] = sqrt(fbuf[0])
+			var distance := fbuf[0]
 			if not (distance < radius):
 				continue
 
 			var cap := radius_px & 0xff
 			if shaped:
-				var remainder := _press_native_f32(
-					radius_squared - _press_native_f32(distance * distance)
-				)
-				var root := _press_native_f32(sqrt(remainder))
-				cap = int(_press_native_f32(radius - root)) & 0xff
+				fbuf[0] = distance * distance
+				fbuf[0] = radius_squared - fbuf[0]
+				fbuf[0] = sqrt(fbuf[0])
+				fbuf[0] = radius - fbuf[0]
+				cap = int(fbuf[0]) & 0xff
 
 			_press_native_set_cap(idx, cap, dirty)
 
@@ -1550,8 +1573,11 @@ func set_player(id: int, x: float, y: float, color_id: int, nick: String, alive:
 		a["net_age"] = 0.1
 	a["net_target"] = p
 	var lab: Label3D = a["label"]
-	lab.text = nick
-	lab.modulate = Color(1, 0.35, 0.3) if is_director else Color(1, 1, 1)
+	if lab.text != nick:
+		lab.text = nick
+	var lab_col := Color(1, 0.35, 0.3) if is_director else Color(1, 1, 1)
+	if lab.modulate != lab_col:
+		lab.modulate = lab_col
 
 
 # Character state effects (Claude): equip.txt szFx<colour> = fx/cfg/benpao_<colour+1>.eft; the effect whose
@@ -1925,26 +1951,40 @@ func _item_ground(px: Vector2) -> float:
 	return h / ENGINE_PER_NODE
 
 
+const _SCREEN_OFFSETS := [
+	Vector3.ZERO,
+	Vector3(2, 0, 2),
+	Vector3(-2, 0, 2),
+	Vector3(2, 0, -2),
+	Vector3(-2, 0, -2),
+	Vector3(0, 3, 0),
+]
+
 func _on_screen(p: Vector3) -> bool:
 	if camera == null:
 		return true
-	for o in [Vector3.ZERO, Vector3(2, 0, 2), Vector3(-2, 0, 2), Vector3(2, 0, -2), Vector3(-2, 0, -2), Vector3(0, 3, 0)]:
+	var dx := p.x - cam_target.x
+	var dz := p.z - cam_target.z
+	if dx * dx + dz * dz > 1600.0:
+		return false
+	for o in _SCREEN_OFFSETS:
 		if camera.is_position_in_frustum(p + o):
 			return true
 	return false
 
 
 func _update_items(_delta: float) -> void:
+	if items.is_empty():
+		return
 	var now := Time.get_ticks_msec()
 	var now_s := now / 1000.0
-	for id in items.keys():
-		# A Lua animation callback can remove other items while this snapshot is visited.
-		var it: Dictionary = items.get(id, {})
-		if it.is_empty():
-			continue
+	var finished_ids: Array = []
+	var invalid_ids: Array = []
+	for id in items:
+		var it: Dictionary = items[id]
 		var node: Node3D = it["node"]
 		if not is_instance_valid(node):
-			items.erase(id)
+			invalid_ids.append(id)
 			continue
 		var fl: float = it["flight"]
 		if fl > 0.0:
@@ -1952,25 +1992,30 @@ func _update_items(_delta: float) -> void:
 			node.position = (it["from"] as Vector3).lerp(it["to"], t)
 			if t >= 1.0:
 				it["flight"] = 0.0
-		else:
-			node.position.y = _item_ground(it["px"])
-		# like the engine, only on-screen render objects update: effects of items far from the camera target are
-		# paused and hidden (no visible change) (Claude)
 		var near: bool = it["kind"] == "map" or _on_screen(node.position)
 		if near != node.visible:
 			node.visible = near
 			node.process_mode = Node.PROCESS_MODE_INHERIT if near else Node.PROCESS_MODE_DISABLED
+		if near and fl <= 0.0:
+			node.position.y = _item_ground(it["px"])
 		var end_s: float = it["anim_end"]
 		if end_s >= 0.0 and now_s >= end_s:
-			if it["anim"] == "rb1":
-				_item_play(id, "bind")
-				# CItemClient::OnAniPlayEnd changes logical state 1 -> 2. Flight
-				# interpolation is independent; it must not arm the pickup early.
-				item_animation_finished.emit(id, "rb1")
-			elif it["anim"] == "fly_die":
-				items.erase(id)
+			finished_ids.append(id)
+	for id in invalid_ids:
+		items.erase(id)
+	for id in finished_ids:
+		var it: Dictionary = items.get(id, {})
+		if it.is_empty():
+			continue
+		var node: Node3D = it["node"]
+		if it["anim"] == "rb1":
+			_item_play(id, "bind")
+			item_animation_finished.emit(id, "rb1")
+		elif it["anim"] == "fly_die":
+			items.erase(id)
+			if is_instance_valid(node):
 				node.queue_free()
-				item_animation_finished.emit(id, "fly_die")
+			item_animation_finished.emit(id, "fly_die")
 
 
 func show_capture_popup(text: String, duration_ms: int = 1000, _text_eft = null, _bg_eft = null) -> void:

@@ -77,6 +77,9 @@ var _pressed := false
 var _mouse_inside := false
 var _touch_down := false
 var _last_pointer := Vector2.ZERO
+var _mouse_drag_start := Vector2.ZERO
+var _mouse_drag_last := Vector2.ZERO
+var _mouse_dragging := false
 var _edit_control: LineEdit
 var _edit_selection_color := Color(0.25, 0.45, 0.8, 0.4)
 var _widget_script: Script
@@ -121,6 +124,7 @@ func setup(w: Dictionary, tex: Array, child_key: String, widget_script: Script) 
 	_geometry_size = size
 	style_flags = GuiDraw.integer(base.get("this+0x0c", 0)) & 0xffffffff
 	_apply_style()
+	state = _normal_state()
 
 	# ASSUMPTION: the supplied files do not bind resource +0x20/+0x24 to
 	# runtime text insets +0x60/+0x64. Preserve them in data, and default the
@@ -135,8 +139,6 @@ func setup(w: Dictionary, tex: Array, child_key: String, widget_script: Script) 
 		)
 
 	_load_image_states(w)
-	_create_images_by_state = images_by_state.duplicate(true)
-	_create_groups_by_state = groups_by_state.duplicate(true)
 
 	kids.clear()
 	var children: Array = w.get("children", [])
@@ -163,12 +165,17 @@ func setup(w: Dictionary, tex: Array, child_key: String, widget_script: Script) 
 	_setup_done = true
 	set_notify_transform(true)
 	set_process(false)
-	_invalidate_gui()
+	queue_redraw()
 
 
 func _ready() -> void:
 	if _setup_done:
-		_invalidate_gui()
+		queue_redraw()
+		if _edit_control != null:
+			_refresh_edit_control()
+	if _has_preview() and is_visible_in_tree():
+		set_process(true)
+		_update_preview_state()
 
 
 func _exit_tree() -> void:
@@ -178,6 +185,17 @@ func _exit_tree() -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_TRANSFORM_CHANGED and _setup_done:
 		_invalidate_gui()
+		if _has_preview():
+			_update_preview_state()
+	elif what == NOTIFICATION_VISIBILITY_CHANGED:
+		if _has_preview():
+			if not is_visible_in_tree():
+				_set_preview_running(false)
+				if not _is_scrollable() or scroll_velocity.length() < 2.0:
+					set_process(false)
+			else:
+				set_process(true)
+				_update_preview_state()
 
 
 func _load_image_states(w: Dictionary) -> void:
@@ -220,9 +238,11 @@ func _load_image_states(w: Dictionary) -> void:
 		for value in record.get("images", []):
 			if not value is Dictionary:
 				continue
-			var image_data: Dictionary = value.duplicate(true)
+			var image_data: Dictionary = value.duplicate(false)
 			var source := GuiDraw.rect_edges(image_data.get("source_rect", {}))
 			var destination := GuiDraw.rect_edges(image_data.get("destination_rect", {}))
+			image_data["source_rect"] = GuiDraw.rect_dictionary(source)
+			image_data["destination_rect"] = GuiDraw.rect_dictionary(destination)
 			image_data["_gui_tile_rect"] = GuiDraw.rect_dictionary(source)
 			image_data["_gui_uv_density"] = _image_density(source, destination, Vector2.ONE)
 			images.append(image_data)
@@ -231,7 +251,7 @@ func _load_image_states(w: Dictionary) -> void:
 		for value in record.get("groups", []):
 			if not value is Dictionary:
 				continue
-			var group: Dictionary = value.duplicate(true)
+			var group: Dictionary = value.duplicate(false)
 			var rect := GuiDraw.rect_edges(group.get("rect", {}))
 			# The supplied loader description converts serialized floats into
 			# an integer group rectangle. Integer conversion truncates to zero.
@@ -362,7 +382,9 @@ func _apply_style() -> void:
 		if (style_flags & GuiDraw.WS_MSGTRANSPT) != 0
 		else Control.MOUSE_FILTER_PASS
 	)
-	clip_contents = false
+	# Clip scrollable list/scrollpanes to their authored bounds so scrolled rows
+	# and 3D SubViewportContainer previews never bleed over headers or Return buttons.
+	clip_contents = _is_list() or class_of() == "CGScrollPane"
 	# ASSUMPTION: the native TOPMOST sibling partition maps to this z band.
 	z_index = 1 if (style_flags & GuiDraw.WS_TOPMOST) != 0 else 0
 
@@ -410,11 +432,13 @@ func find_wnd(child_key: String) -> Control:
 
 
 func show_wnd(value: bool) -> void:
+	var prev_vis := visible
 	if value:
 		style_flags &= ~WS_INVISIBLE
 	else:
 		style_flags |= WS_INVISIBLE
-	visible = value
+	if prev_vis != value:
+		visible = value
 
 
 func is_shown() -> bool:
@@ -422,7 +446,10 @@ func is_shown() -> bool:
 
 
 func set_wnd_text(value: String) -> void:
-	wnd_text = value
+	var resolved := value if _edit_control != null else GuiRuntime.resolve_text(value)
+	if _edit_control == null and resolved == wnd_text:
+		return
+	wnd_text = resolved
 	rich_links.clear()
 	rich_hit_rects.clear()
 	if _edit_control != null and _edit_control.text != value:
@@ -472,6 +499,8 @@ func set_state(new_state: int) -> void:
 
 
 func enable_wnd(value: bool) -> void:
+	if enabled == value:
+		return
 	enabled = value
 	if not enabled:
 		_pressed = false
@@ -486,6 +515,15 @@ func is_enable() -> bool:
 
 func set_check(value: bool) -> void:
 	checked = value
+	if checked and _is_radio_button():
+		var parent := get_parent()
+		if parent != null:
+			for sibling in parent.get_children():
+				if sibling != self and sibling is Control and sibling.has_method("_is_radio_button") and sibling.call("_is_radio_button"):
+					if bool(sibling.get("checked")):
+						sibling.set("checked", false)
+						sibling.call("_set_visual_state", bool(sibling.get("_mouse_inside")))
+						sibling.queue_redraw()
 	_set_visual_state(_mouse_inside)
 	queue_redraw()
 
@@ -495,7 +533,10 @@ func get_check() -> bool:
 
 
 func set_range(value: float) -> void:
-	progress_range = maxf(0.0, value)
+	var next_range := maxf(0.0, value)
+	if is_equal_approx(progress_range, next_range):
+		return
+	progress_range = next_range
 	queue_redraw()
 
 
@@ -504,6 +545,8 @@ func get_range() -> float:
 
 
 func set_pos_value(value: float) -> void:
+	if is_equal_approx(progress_pos, value):
+		return
 	progress_pos = value
 	queue_redraw()
 
@@ -709,6 +752,10 @@ func set_sub_item_visible(value: bool, row_index: int, column_index: int) -> voi
 		item.visible = value
 
 
+func has_image_state(image_state: int) -> bool:
+	return image_state >= 0 and image_state < images_by_state.size() and images_by_state[image_state] is Array
+
+
 func select_item(row_index: int, column_index: int = 0) -> void:
 	if row_index < 0 or row_index >= list_rows.size():
 		return
@@ -716,9 +763,15 @@ func select_item(row_index: int, column_index: int = 0) -> void:
 	selected_column = column_index
 	for row_i in range(list_rows.size()):
 		var row: Array = list_rows[row_i]
-		for cell in row:
-			if cell is Control and cell.has_method("set_state"):
-				cell.call("set_state", 13 if row_i == selected_row else 14)
+		for col_i in range(row.size()):
+			var cell = row[col_i]
+			if cell is Control:
+				var is_sel := (row_i == selected_row and (row.size() <= 1 or col_i == selected_column))
+				if cell.has_method("_is_check_button") and cell.call("_is_check_button"):
+					if cell.has_method("set_check"):
+						cell.call("set_check", is_sel)
+				elif cell.has_method("has_image_state") and cell.call("has_image_state", 13) and cell.has_method("set_state"):
+					cell.call("set_state", 13 if is_sel else 14)
 	_send(GM_WM_ITEM_SELECT_CHANGED, row_index, column_index)
 
 
@@ -930,8 +983,7 @@ func set_image_color(group: int, image_index: int, image_state: int, color_value
 
 
 func restore_image_from_create_param() -> void:
-	images_by_state = _create_images_by_state.duplicate(true)
-	groups_by_state = _create_groups_by_state.duplicate(true)
+	_load_image_states(data)
 	_image_rect_overrides.clear()
 	_texture_rect_overrides.clear()
 	# Restore authored geometry, then adapt it to the current window once.
@@ -1296,11 +1348,14 @@ func _draw_rich_text() -> void:
 	var font_size := _font_size()
 	var ascent := font.get_ascent(font_size)
 	var line_height := font.get_height(font_size)
-	var x := 4.0
-	var y := ascent
 	rich_hit_rects.clear()
 	rich_links.clear()
 	var segments := _parse_rich_segments(wnd_text)
+	var max_width := maxf(size.x - 8.0, 32.0)
+
+	var laid_lines: Array = []
+	var cur_runs: Array = []
+	var cur_width := 0.0
 
 	for segment in segments:
 		var value := str(segment.get("text", ""))
@@ -1313,37 +1368,62 @@ func _draw_rich_text() -> void:
 				rich_links.append(link_id)
 			unit_id = rich_links.find(link_id) + 1
 
-		# wrap at the window width like CGRichWnd (Claude)
-		var max_x := maxf(size.x - 4.0, 40.0)
-		var lines: PackedStringArray = []
-		var cur_x := x
-		for raw_line in value.split("\n", true):
+		var raw_lines := value.split("\n", true)
+		for rl_index in range(raw_lines.size()):
+			var raw_line := raw_lines[rl_index]
 			var acc := ""
+			var acc_w := 0.0
 			for ch_i in raw_line.length():
 				var ch := raw_line.substr(ch_i, 1)
 				var cw := font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-				if cur_x + cw > max_x and acc != "":
-					lines.append(acc)
-					acc = ""
-					cur_x = 4.0
+				if cur_width + acc_w + cw > max_width and (acc != "" or not cur_runs.is_empty()):
+					if acc != "":
+						cur_runs.append({"text": acc, "width": acc_w, "color": color, "unit": unit_id})
+						cur_width += acc_w
+						acc = ""
+						acc_w = 0.0
+					laid_lines.append({"runs": cur_runs, "width": cur_width})
+					cur_runs = []
+					cur_width = 0.0
 				acc += ch
-				cur_x += cw
-			lines.append(acc)
-			cur_x = 4.0
-		for line_index in range(lines.size()):
-			var line := lines[line_index]
-			if line != "":
-				var width := font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-				_draw_text_line(font, font_size, Vector2(x, y), line, color)
-				if unit_id > 0:
-					rich_hit_rects.append({
-						"rect": Rect2(x, y - ascent, width, line_height),
-						"unit": unit_id
-					})
-				x += width
-			if line_index < lines.size() - 1:
-				x = 4.0
-				y += line_height
+				acc_w += cw
+			if acc != "":
+				cur_runs.append({"text": acc, "width": acc_w, "color": color, "unit": unit_id})
+				cur_width += acc_w
+			if rl_index < raw_lines.size() - 1:
+				laid_lines.append({"runs": cur_runs, "width": cur_width})
+				cur_runs = []
+				cur_width = 0.0
+	if not cur_runs.is_empty() or laid_lines.is_empty():
+		laid_lines.append({"runs": cur_runs, "width": cur_width})
+
+	var total_height := line_height * float(laid_lines.size())
+	var y := ascent
+	if (style_flags & WS_TEXTYC) != 0:
+		y = (size.y - total_height) * 0.5 + ascent
+	elif (style_flags & WS_TEXTYB) != 0:
+		y = size.y - total_height + ascent
+
+	for line_entry in laid_lines:
+		var line_width := float(line_entry["width"])
+		var x := 4.0
+		if (style_flags & WS_TEXTXC) != 0:
+			x = (size.x - line_width) * 0.5
+		elif (style_flags & WS_TEXTXR) != 0:
+			x = size.x - line_width - 4.0
+		for run in line_entry["runs"]:
+			var text := str(run["text"])
+			var width := float(run["width"])
+			var color: Color = run["color"]
+			var unit_id := int(run["unit"])
+			_draw_text_line(font, font_size, Vector2(x, y), text, color)
+			if unit_id > 0:
+				rich_hit_rects.append({
+					"rect": Rect2(x, y - ascent, width, line_height),
+					"unit": unit_id
+				})
+			x += width
+		y += line_height
 
 
 func _parse_rich_segments(source: String) -> Array:
@@ -1519,6 +1599,18 @@ func _is_check_button() -> bool:
 	return class_of() == "CGCheckButton"
 
 
+func _is_radio_button() -> bool:
+	return _is_check_button() and (style_flags & 0x1) != 0
+
+
+func _scroll_drag_target() -> Control:
+	if _is_scrollable() and inertia_type != 0:
+		return self
+	if _list_owner != null and is_instance_valid(_list_owner) and _list_owner.has_method("_is_scrollable") and _list_owner.call("_is_scrollable") and int(_list_owner.get("inertia_type")) != 0:
+		return _list_owner
+	return null
+
+
 func _is_button() -> bool:
 	return class_of() == "CGButton" or class_of() == "CGCheckButton" or class_of() == "CGComboBox"
 
@@ -1592,6 +1684,20 @@ func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		_mouse_inside = Rect2(Vector2.ZERO, size).has_point(event.position)
 		if _pressed:
+			var drag_target := _scroll_drag_target()
+			if drag_target != null:
+				var motion := event as InputEventMouseMotion
+				var total_delta := motion.global_position - _mouse_drag_start
+				var step_delta := motion.global_position - _mouse_drag_last
+				_mouse_drag_last = motion.global_position
+				var target_inertia := int(drag_target.get("inertia_type"))
+				if not _mouse_dragging:
+					if (target_inertia == INERTIA_HSCROLL and absf(total_delta.x) >= 10.0) or (target_inertia == INERTIA_VSCROLL and absf(total_delta.y) >= 10.0):
+						_mouse_dragging = true
+				if _mouse_dragging:
+					drag_target.call("_handle_scroll_drag", step_delta)
+					accept_event()
+					return
 			_set_visual_state(_mouse_inside)
 		return
 
@@ -1608,15 +1714,22 @@ func _gui_input(event: InputEvent) -> void:
 		if mouse_event.pressed:
 			_send(WM_LBUTTONDOWN, 1, _pack_lparam(mouse_event.position))
 			_pressed = true
+			_mouse_drag_start = mouse_event.global_position
+			_mouse_drag_last = mouse_event.global_position
+			_mouse_dragging = false
 			_set_visual_state(true)
 			if capture: accept_event()
 		else:
 			var was_pressed := _pressed
+			var was_dragging := _mouse_dragging
 			_send(WM_LBUTTONUP, 0, _pack_lparam(mouse_event.position))
 			_pressed = false
-			if was_pressed:
+			_mouse_dragging = false
+			if was_pressed and not was_dragging:
 				_finish_click(mouse_event.position)
 				if capture: accept_event()
+			elif was_dragging and capture:
+				accept_event()
 			_set_visual_state(_mouse_inside)
 		return
 
@@ -1660,8 +1773,11 @@ func _finish_click(point: Vector2) -> void:
 	if link_unit > 0:
 		_send(GM_WM_RICH_CLICK_ID, link_unit << 16, l_param)
 	if _is_check_button():
-		checked = not checked
-		_set_visual_state(_mouse_inside)
+		if _is_radio_button():
+			set_check(true)
+		else:
+			checked = not checked
+			_set_visual_state(_mouse_inside)
 		_send(GM_WM_BTN_CHECKED, 1 if checked else 0, l_param)
 	_send(GM_WM_MOUSECLICK, 1, l_param)
 	if _is_button():
@@ -1704,17 +1820,26 @@ func _handle_scroll_drag(delta: Vector2) -> void:
 
 
 func _process(delta: float) -> void:
-	if not _is_scrollable() or scroll_velocity.length() < 2.0:
-		scroll_velocity = Vector2.ZERO
-		set_process(false)
-		return
-	if inertia_type == INERTIA_HSCROLL:
-		set_scroll_horizon_pos(scroll_x + scroll_velocity.x * delta)
+	var keep_running := false
+	if _has_preview():
+		if is_visible_in_tree():
+			_update_preview_state()
+			keep_running = true
+		else:
+			_set_preview_running(false)
+	if _is_scrollable() and scroll_velocity.length() >= 2.0:
+		if inertia_type == INERTIA_HSCROLL:
+			set_scroll_horizon_pos(scroll_x + scroll_velocity.x * delta)
+		else:
+			set_scroll_vertical_pos(scroll_y + scroll_velocity.y * delta)
+		scroll_velocity *= pow(0.08, delta)
+		if scroll_velocity.length() >= 2.0:
+			keep_running = true
+		else:
+			scroll_velocity = Vector2.ZERO
 	else:
-		set_scroll_vertical_pos(scroll_y + scroll_velocity.y * delta)
-	scroll_velocity *= pow(0.08, delta)
-	if scroll_velocity.length() < 2.0:
 		scroll_velocity = Vector2.ZERO
+	if not keep_running:
 		set_process(false)
 
 
@@ -1838,3 +1963,269 @@ func _on_edit_focus_changed(has_focus_value: bool) -> void:
 
 func _on_edit_submitted(_value: String) -> void:
 	_send(GM_WM_EDIT_RETURN, 0, 0)
+
+
+static var _shared_preview_env: Environment = null
+static var _preview_scene_cache: Dictionary = {}
+static var _preview_budget_frame: int = -1
+static var _preview_budget_left: int = 0
+
+var _preview_holder: SubViewportContainer = null
+var _preview_vp: SubViewport = null
+var _preview_ap: AnimationPlayer = null
+var _preview_model_path := ""
+var _preview_pending_path := ""
+var _preview_pending_ani := "stand"
+var _preview_pending_loop := true
+var _preview_running := false
+
+
+func _has_preview() -> bool:
+	return _preview_pending_path != "" or _preview_vp != null
+
+
+func clear_preview_model() -> void:
+	_preview_model_path = ""
+	_preview_pending_path = ""
+	_preview_running = false
+	_preview_ap = null
+	_preview_vp = null
+	if _preview_holder != null and is_instance_valid(_preview_holder):
+		_preview_holder.queue_free()
+		_preview_holder = null
+
+
+func _is_preview_on_screen() -> bool:
+	if not is_inside_tree() or not is_visible_in_tree():
+		return false
+	var my_rect := get_global_rect()
+	if my_rect.size.x <= 1.0 or my_rect.size.y <= 1.0:
+		return false
+	var vp := get_viewport()
+	if vp != null:
+		var screen_rect := vp.get_visible_rect()
+		if not my_rect.intersects(screen_rect):
+			return false
+	var cur := get_parent()
+	while cur != null and cur is Control:
+		var ctrl := cur as Control
+		if ctrl.clip_contents:
+			var clip_rect := ctrl.get_global_rect()
+			if not my_rect.intersects(clip_rect):
+				return false
+			my_rect = my_rect.intersection(clip_rect)
+		cur = cur.get_parent()
+	return my_rect.size.x > 1.0 and my_rect.size.y > 1.0
+
+
+func _set_preview_running(active: bool) -> void:
+	if _preview_vp == null or not is_instance_valid(_preview_vp):
+		_preview_running = false
+		return
+	if _preview_running == active:
+		return
+	_preview_running = active
+	_preview_vp.render_target_update_mode = (
+		SubViewport.UPDATE_WHEN_VISIBLE if active else SubViewport.UPDATE_DISABLED
+	)
+	if _preview_ap != null and is_instance_valid(_preview_ap):
+		_preview_ap.process_mode = (
+			Node.PROCESS_MODE_INHERIT if active else Node.PROCESS_MODE_DISABLED
+		)
+	if _preview_holder != null and is_instance_valid(_preview_holder):
+		_preview_holder.visible = active
+
+
+func _take_preview_budget() -> bool:
+	var frame := Engine.get_process_frames()
+	if frame != _preview_budget_frame:
+		_preview_budget_frame = frame
+		_preview_budget_left = 4
+	if _preview_budget_left <= 0:
+		return false
+	_preview_budget_left -= 1
+	return true
+
+
+func _update_preview_state() -> void:
+	var on_screen := _is_preview_on_screen()
+	if not on_screen:
+		_set_preview_running(false)
+		return
+	if _preview_vp == null and _preview_pending_path != "":
+		if _take_preview_budget():
+			_build_preview_model(_preview_pending_path, _preview_pending_ani, _preview_pending_loop)
+	if _preview_vp != null:
+		_set_preview_running(true)
+
+
+func _resolve_preview_ani(ap: AnimationPlayer, ani_name: String) -> String:
+	if ap == null:
+		return ""
+	if ani_name != "" and ap.has_animation(ani_name):
+		return ani_name
+	for fallback in ["stand", "stand1", "stand2", "run_w", "chat"]:
+		if ap.has_animation(fallback):
+			return fallback
+	var all := ap.get_animation_list()
+	return str(all[0]) if not all.is_empty() else ""
+
+
+func play_preview_ani(ani_name: String = "stand", loop: bool = true) -> void:
+	_preview_pending_ani = ani_name
+	_preview_pending_loop = loop
+	if _preview_vp == null and _preview_pending_path != "" and is_visible_in_tree():
+		_build_preview_model(_preview_pending_path, ani_name, loop)
+	if _preview_ap == null or not is_instance_valid(_preview_ap):
+		return
+	var pick := _resolve_preview_ani(_preview_ap, ani_name)
+	if pick == "":
+		return
+	var anim := _preview_ap.get_animation(pick)
+	if anim != null:
+		anim.loop_mode = Animation.LOOP_LINEAR if loop else Animation.LOOP_NONE
+	if not loop:
+		# Play showcase emote once, then seamlessly resume looping idle animation.
+		if not _preview_ap.animation_finished.is_connected(_on_preview_ani_finished):
+			_preview_ap.animation_finished.connect(_on_preview_ani_finished, CONNECT_ONE_SHOT)
+		_preview_ap.stop()
+		_preview_ap.play(pick)
+	else:
+		if _preview_ap.current_animation != pick or not _preview_ap.is_playing():
+			_preview_ap.play(pick)
+			_preview_ap.advance(0.0)
+	if _is_preview_on_screen():
+		_set_preview_running(true)
+
+
+func _on_preview_ani_finished(_finished_name: StringName) -> void:
+	play_preview_ani("stand", true)
+
+
+func show_preview_model(model_path: String, ani_name: String = "stand", loop: bool = true) -> void:
+	if model_path.is_empty() or not ResourceLoader.exists(model_path):
+		return
+	_preview_pending_path = model_path
+	_preview_pending_ani = ani_name
+	_preview_pending_loop = loop
+	if _preview_model_path == model_path and _preview_holder != null and is_instance_valid(_preview_holder):
+		play_preview_ani(ani_name, loop)
+		if is_visible_in_tree():
+			set_process(true)
+			_update_preview_state()
+		return
+	if _preview_holder != null and is_instance_valid(_preview_holder):
+		_preview_holder.queue_free()
+		_preview_holder = null
+		_preview_vp = null
+		_preview_ap = null
+		_preview_model_path = ""
+		_preview_running = false
+	if is_visible_in_tree():
+		set_process(true)
+		_update_preview_state()
+
+
+func _build_preview_model(model_path: String, ani_name: String, loop: bool) -> void:
+	if not _preview_scene_cache.has(model_path):
+		_preview_scene_cache[model_path] = ResourceLoader.load(model_path)
+	var packed = _preview_scene_cache[model_path]
+	if packed == null or not (packed is PackedScene):
+		return
+	var inst: Node = (packed as PackedScene).instantiate()
+	if not (inst is Node3D):
+		inst.queue_free()
+		return
+	_preview_model_path = model_path
+
+	var holder := SubViewportContainer.new()
+	holder.name = "ModelPreview3D"
+	holder.stretch = true
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.position = Vector2.ZERO
+	holder.size = size if size.x > 8.0 and size.y > 8.0 else Vector2(200, 200)
+	holder.clip_contents = true
+
+	var vp := SubViewport.new()
+	vp.own_world_3d = true
+	vp.transparent_bg = true
+	vp.handle_input_locally = false
+	vp.msaa_3d = Viewport.MSAA_DISABLED
+	vp.positional_shadow_atlas_size = 0
+	vp.use_debanding = false
+	vp.size = Vector2i(160, 160)
+	vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	holder.add_child(vp)
+	_preview_vp = vp
+
+	if _shared_preview_env == null:
+		var env := Environment.new()
+		env.background_mode = Environment.BG_COLOR
+		env.background_color = Color(0, 0, 0, 0)
+		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+		env.ambient_light_color = Color(1.0, 1.0, 1.0)
+		env.ambient_light_energy = 1.15
+		_shared_preview_env = env
+	var env_node := WorldEnvironment.new()
+	env_node.environment = _shared_preview_env
+	vp.add_child(env_node)
+
+	var light := DirectionalLight3D.new()
+	light.rotation_degrees = Vector3(-38.0, 32.0, 0.0)
+	light.light_energy = 1.0
+	light.shadow_enabled = false
+	vp.add_child(light)
+
+	var model_root := Node3D.new()
+	vp.add_child(model_root)
+	var model3d: Node3D = inst as Node3D
+	model_root.add_child(model3d)
+
+	var aps := model3d.find_children("*", "AnimationPlayer", true, false)
+	if not aps.is_empty():
+		_preview_ap = aps[0] as AnimationPlayer
+		_preview_ap.process_mode = Node.PROCESS_MODE_DISABLED
+		var pick := _resolve_preview_ani(_preview_ap, ani_name)
+		if pick != "":
+			var anim := _preview_ap.get_animation(pick)
+			if anim != null:
+				anim.loop_mode = Animation.LOOP_LINEAR if loop else Animation.LOOP_NONE
+			if not loop:
+				if not _preview_ap.animation_finished.is_connected(_on_preview_ani_finished):
+					_preview_ap.animation_finished.connect(_on_preview_ani_finished, CONNECT_ONE_SHOT)
+			_preview_ap.play(pick)
+			_preview_ap.advance(0.0)
+
+	# Auto-frame model from its mesh bounds so every character & chest fills the card cleanly
+	var has_bounds := false
+	var bounds := AABB()
+	for m in model3d.find_children("*", "MeshInstance3D", true, false):
+		var mi := m as MeshInstance3D
+		if mi != null and mi.mesh != null:
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			var a := mi.mesh.get_aabb()
+			if not has_bounds:
+				bounds = a
+				has_bounds = true
+			else:
+				bounds = bounds.merge(a)
+	var center := Vector3(0, 0.45, 0)
+	var radius := 0.65
+	if has_bounds and bounds.size.length() > 0.001:
+		center = bounds.get_center()
+		radius = maxf(bounds.size.y * 0.55, maxf(bounds.size.x, bounds.size.z) * 0.55)
+		radius = clampf(radius, 0.15, 20.0)
+
+	var cam := Camera3D.new()
+	cam.fov = 34.0
+	cam.near = maxf(0.02, radius * 0.05)
+	cam.far = maxf(50.0, radius * 40.0)
+	vp.add_child(cam)
+	cam.look_at_from_position(center + Vector3(-radius * 1.15, radius * 0.95, -radius * 3.15), center, Vector3.UP)
+
+	add_child(holder)
+	move_child(holder, 0)
+	_preview_holder = holder
+	_preview_running = false
+	if _is_preview_on_screen():
+		_set_preview_running(true)

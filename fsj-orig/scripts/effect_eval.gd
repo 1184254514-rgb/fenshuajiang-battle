@@ -27,6 +27,7 @@ const MAX_PARTICLES: int = 2001
 
 static var _files: Dictionary = {}
 static var _textures: Dictionary = {}
+static var _f32_buf: PackedFloat32Array = PackedFloat32Array([0.0])
 
 var units: Array = []
 var states: Array = []
@@ -91,6 +92,14 @@ static func clear_caches() -> void:
 	_textures.clear()
 
 
+const _TEX_FALLBACKS := {
+	"res://assets/fx/tex/new_note_02_a.png": "res://assets/fx/tex/new_note_01a.png",
+	"res://assets/fx/tex/new_note_02.png": "res://assets/fx/tex/new_note_01.png",
+	"res://assets/fx/tex/magic0150_4.png": "res://assets/fx/tex/magic0150.png",
+	"res://assets/fx/tex/glo_150.png": "res://assets/fx/tex/glow010.png",
+}
+
+
 static func texture_at(path: String) -> Texture2D:
 	if path.is_empty():
 		return null
@@ -98,6 +107,14 @@ static func texture_at(path: String) -> Texture2D:
 		var texture: Texture2D = null
 		if ResourceLoader.exists(path):
 			texture = ResourceLoader.load(path) as Texture2D
+		elif path.ends_with(".png"):
+			var seq_path := path.substr(0, path.length() - 4) + "_00000.png"
+			if ResourceLoader.exists(seq_path):
+				texture = ResourceLoader.load(seq_path) as Texture2D
+		if texture == null and _TEX_FALLBACKS.has(path):
+			var fb: String = _TEX_FALLBACKS[path]
+			if ResourceLoader.exists(fb):
+				texture = ResourceLoader.load(fb) as Texture2D
 		if texture == null:
 			push_warning("EffectPlayer: missing or invalid texture: %s" % path)
 		_textures[path] = texture
@@ -109,7 +126,7 @@ func _init(
 	repeat: bool = false,
 	random_seed: int = 0
 ) -> void:
-	units = definition.get("units", []).duplicate(true)
+	units = definition.get("units", [])
 	duration_ms = maxf(1.0, float(definition.get("duration_ms", 1)))
 	loop_ms = maxf(FRAME_MS, floor(duration_ms / FRAME_MS) * FRAME_MS)
 	looping = repeat
@@ -135,9 +152,9 @@ func _init(
 
 
 static func f32(value: float) -> float:
-	# Preserve the single-precision arithmetic preceding byte quantization.
-	var storage: PackedFloat32Array = PackedFloat32Array([value])
-	return float(storage[0])
+	# Preserve the single-precision arithmetic preceding byte quantization without heap allocations.
+	_f32_buf[0] = value
+	return float(_f32_buf[0])
 
 
 static func vec3(value: Array) -> Vector3:
@@ -190,8 +207,12 @@ static func left_weight(track: Array, pair: Vector2i, percent: float) -> float:
 
 static func position_track(unit: Dictionary, percent: float) -> Vector3:
 	var track: Array = unit.get("position", [])
-	if track.is_empty():
+	var count: int = track.size()
+	if count == 0:
 		return Vector3.ZERO
+	if count == 1:
+		var a0: Array = track[0]
+		return Vector3(float(a0[1]), float(a0[2]), float(a0[3]))
 	var pair: Vector2i = bracket(track, percent)
 	var a: Array = track[pair.x]
 	var first: Vector3 = Vector3(float(a[1]), float(a[2]), float(a[3]))
@@ -199,25 +220,36 @@ static func position_track(unit: Dictionary, percent: float) -> Vector3:
 		return first
 	var b: Array = track[pair.y]
 	var second: Vector3 = Vector3(float(b[1]), float(b[2]), float(b[3]))
+	if first == second:
+		return first
 	var weight: float = left_weight(track, pair, percent)
 	return first * weight + second * f32(1.0 - weight)
 
 
 static func byte_track(unit: Dictionary, index: int, percent: float) -> float:
 	var track: Array = track_at(unit, "bytes", index)
-	if track.is_empty():
+	var count: int = track.size()
+	if count == 0:
 		return 0.0
+	if count == 1:
+		return float(int(track[0][1]) & 255) / 255.0
+	if count == 2:
+		var v0: int = int(track[0][1]) & 255
+		var v1: int = int(track[1][1]) & 255
+		if v0 == v1:
+			return float(v0) / 255.0
 	var pair: Vector2i = bracket(track, percent)
 	var first: int = int(track[pair.x][1]) & 255
 	var result: int = first
 	if pair.x != pair.y:
 		var second: int = int(track[pair.y][1]) & 255
-		var weight: float = left_weight(track, pair, percent)
-		var mixed: float = f32(
-			f32(float(second) * f32(1.0 - weight))
-			+ f32(float(first) * weight)
-		)
-		result = int(mixed) & 255
+		if first != second:
+			var weight: float = left_weight(track, pair, percent)
+			var mixed: float = f32(
+				f32(float(second) * f32(1.0 - weight))
+				+ f32(float(first) * weight)
+			)
+			result = int(mixed) & 255
 	return f32(float(result) / 255.0)
 
 
@@ -225,13 +257,18 @@ static func packed_color_track(
 	unit: Dictionary, index: int, percent: float, fallback: int = 0
 ) -> int:
 	var track: Array = track_at(unit, "colors", index)
-	if track.is_empty():
+	var count: int = track.size()
+	if count == 0:
 		return fallback
-	if track.size() == 1:
+	if count == 1:
 		return int(track[0][1]) & 0xffffffff
 	var pair: Vector2i
 	# GetColor explicitly bypasses GetPos for exactly two colors.
-	if track.size() == 2:
+	if count == 2:
+		var c0: int = int(track[0][1]) & 0xffffffff
+		var c1: int = int(track[1][1]) & 0xffffffff
+		if c0 == c1:
+			return c0
 		pair = Vector2i(0, 1)
 	else:
 		pair = bracket(track, percent)
@@ -248,13 +285,11 @@ static func packed_color_track(
 	if first_weight >= 255:
 		return first
 	var second_weight: int = 256 - first_weight
-	var result: int = 0
-	for shift in [0, 8, 16, 24]:
-		var a: int = (first >> shift) & 255
-		var b: int = (second >> shift) & 255
-		var component: int = (a * first_weight + b * second_weight) >> 8
-		result |= (component & 255) << shift
-	return result
+	var r0: int = ((first & 255) * first_weight + (second & 255) * second_weight) >> 8
+	var r1: int = (((first >> 8) & 255) * first_weight + ((second >> 8) & 255) * second_weight) >> 8
+	var r2: int = (((first >> 16) & 255) * first_weight + ((second >> 16) & 255) * second_weight) >> 8
+	var r3: int = (((first >> 24) & 255) * first_weight + ((second >> 24) & 255) * second_weight) >> 8
+	return (r0 & 255) | ((r1 & 255) << 8) | ((r2 & 255) << 16) | ((r3 & 255) << 24)
 
 
 static func unpack_color(packed: int) -> Color:
@@ -751,21 +786,29 @@ func _update_particles(
 	var damping: float = 1.0 - minf(
 		seconds * float(properties.get("drag", 0.0)), 1.0
 	)
-	for i in range(particles.size() - 1, -1, -1):
+	var i := particles.size() - 1
+	while i >= 0:
 		var particle: Dictionary = particles[i]
 		var age: float = (
 			(wall_ms - float(particle["born"])) / float(particle["life"])
 		)
 		if age >= 1.0:
-			particles.remove_at(i)
+			var last_idx := particles.size() - 1
+			if i != last_idx:
+				particles[i] = particles[last_idx]
+			particles.pop_back()
+			i -= 1
 			continue
 		particle["age"] = maxf(age, 0.0)
-		particle["angle"] = float(particle["angle"]) + float(particle["spin"]) * seconds
+		var spin_v: float = float(particle["spin"])
+		if spin_v != 0.0:
+			particle["angle"] = float(particle["angle"]) + spin_v * seconds
 		var velocity: Vector3 = particle["velocity"]
 		var location: Vector3 = particle["position"]
 		# Explicit Euler: position first, acceleration second, drag last.
 		particle["position"] = location + velocity * seconds
 		particle["velocity"] = (velocity + acceleration * seconds) * damping
+		i -= 1
 
 	if (
 		bool(unit.get("needs_bone", false))
@@ -928,98 +971,126 @@ func _sprite_packet(index: int, context: Dictionary) -> Dictionary:
 	}
 
 
-func _particle_packet(
-	index: int, particle: Dictionary, context: Dictionary
-) -> Dictionary:
-	var unit: Dictionary = units[index]
+func _emit_particle_packets(
+	index: int, particles: Array, context: Dictionary, out_packets: Array
+) -> void:
 	var state: Dictionary = states[index]
 	var texture: Texture2D = state["texture"]
-	if texture == null:
-		return {}
+	if texture == null or particles.is_empty():
+		return
+	var unit: Dictionary = units[index]
 	var properties: Dictionary = unit.get("particle", {})
-	var age: float = float(particle["age"])
 	var emitter_percent: float = clampf(
 		percent_at(unit, minf(time_ms, unit_end(unit))), 0.0, 1.0
 	)
 	var emitter: Transform3D = state["xf"]
 	var local_space: bool = int(properties.get("space", 0)) == 1
-	var location: Vector3 = particle["position"]
-	var velocity: Vector3 = particle["velocity"]
-	var particle_scale: float = float(particle["birth_scale"])
-	var birth_basis: Basis = particle["birth_basis"]
-	if local_space:
-		location = emitter * location
-		velocity = emitter.basis * velocity
-		particle_scale = scale_measure(emitter.basis)
-		birth_basis = emitter.basis
-
-	# ASSUMPTION: RenderImp is absent. Channels 0..3 are evaluated over
-	# particle lifetime; emitter channels 2/3 multiply/add to life colors.
-	# Flag bits 1/0 freeze those emitter colors at birth, as _InitParticle
-	# explicitly shows. Render modes 0/1/other use camera/velocity/normal.
+	var emitter_scale: float = scale_measure(emitter.basis) if local_space else 1.0
 	var flags: int = int(properties.get("flags", 0))
-	var emitter_tint: Color = particle["tint"]
-	var emitter_add: Color = particle["add"]
-	if (flags & 2) == 0:
-		emitter_tint = color_track(unit, 2, emitter_percent, 0xffffffff)
-	if (flags & 1) == 0:
-		emitter_add = color_track(unit, 3, emitter_percent)
-	var tint: Color = color_track(unit, 0, age) * emitter_tint
-	var additive: Color = color_track(unit, 1, age) + emitter_add
-
-	var rectangle: Rect2 = texture_rect(unit, age)
+	var use_birth_tint: bool = (flags & 2) != 0
+	var use_birth_add: bool = (flags & 1) != 0
+	var shared_tint: Color = Color.WHITE if use_birth_tint else color_track(unit, 2, emitter_percent, 0xffffffff)
+	var shared_add: Color = Color(0, 0, 0, 0) if use_birth_add else color_track(unit, 3, emitter_percent)
 	var limits: Array = properties.get("half_size", [0, 0])
-	var extent: float = lerpf(
-		float(limits[0]), float(limits[1]), byte_track(unit, 3, age)
-	)
-	var half_size: Vector2 = Vector2.ONE * extent * particle_scale
-	half_size.y *= _aspect(
-		float(properties.get("aspect", 1.0)), texture, rectangle
-	)
+	var size_min: float = float(limits[0])
+	var size_max: float = float(limits[1])
+	var aspect_prop: float = float(properties.get("aspect", 1.0))
 	var camera_basis: Basis = context["camera_basis"]
-	var axes: Basis = camera_basis
 	var facing: int = int(properties.get("facing", 0))
-	if facing == 1 and velocity.length_squared() > EPSILON * EPSILON:
-		var x_axis: Vector3 = velocity.normalized()
-		var y_axis: Vector3 = safe_normal(
-			x_axis.cross(-camera_basis.z), camera_basis.y
-		)
-		axes = Basis(x_axis, y_axis, x_axis.cross(y_axis))
-		half_size.x += (
-			velocity.length() * maxf(0.0, float(properties.get("stretch", 0.0))) * 0.5
-		)
-	elif facing > 1:
-		axes = normalized_columns(birth_basis) * plane_basis(
-			vec3(properties.get("direction", [0, 0, 1]))
-		)
-	if half_size.x <= EPSILON or half_size.y <= EPSILON:
-		return {}
+	var stretch_val: float = maxf(0.0, float(properties.get("stretch", 0.0))) * 0.5
+	var dir_plane: Basis = plane_basis(vec3(properties.get("direction", [0, 0, 1]))) if facing > 1 else Basis.IDENTITY
+	var bright_mul: float = float(properties.get("brightness", 1))
+	var blend_mode: int = int(properties.get("blend", 1))
+	var depth_mode: int = int(properties.get("depth", 2))
+	var tex_w: float = float(texture.get_width())
+	var tex_h: float = float(texture.get_height())
+	var grid: Array = unit.get("grid", [1, 1])
+	var columns: int = maxi(1, int(grid[0]))
+	var rows: int = maxi(1, int(grid[1]))
+	var total_frames: int = maxi(1, columns * rows + int(unit.get("frame_count_delta", 0)))
+	var bounds: Array = unit.get("uv", [0.0, 0.0, 1.0, 1.0])
+	var uv_ox: float = float(bounds[0])
+	var uv_oy: float = float(bounds[1])
+	var uv_cx: float = (float(bounds[2]) - uv_ox) / float(columns)
+	var uv_cy: float = (float(bounds[3]) - uv_oy) / float(rows)
+	var fixed_aspect: float = aspect_prop if aspect_prop > 0.0 else (tex_h * absf(uv_cy)) / maxf(tex_w * absf(uv_cx), EPSILON)
+	var static_rect: Rect2 = Rect2(uv_ox, uv_oy, uv_cx, uv_cy)
 
-	var angle: float = float(particle["angle"])
-	var old_x: Vector3 = axes.x
-	var old_y: Vector3 = axes.y
-	axes = Basis(
-		old_x * cos(angle) - old_y * sin(angle),
-		old_x * sin(angle) + old_y * cos(angle),
-		axes.z
-	)
-	return {
-		"id": "p:%d" % int(particle["id"]),
-		"order": index,
-		"xf": _sized_matrix(Transform3D(axes, location), half_size),
-		"texture": texture,
-		"uv": rectangle,
-		"tint": tint,
-		"add": additive,
-		"hue": byte_track(unit, 0, age),
-		"brightness": byte_track(unit, 1, age) * float(properties.get("brightness", 1)),
-		"saturation": byte_track(unit, 2, age),
-		"blend": int(properties.get("blend", 1)),
-		"depth": int(properties.get("depth", 2)),
-		"strips": 1,
-		"fade": Vector2.ZERO,
-		"fade_center": Vector2.ZERO,
-	}
+	for j in range(particles.size() - 1, -1, -1):
+		var particle: Dictionary = particles[j]
+		var age: float = float(particle["age"])
+		var location: Vector3 = particle["position"]
+		var velocity: Vector3 = particle["velocity"]
+		var particle_scale: float
+		var birth_basis: Basis
+		if local_space:
+			location = emitter * location
+			velocity = emitter.basis * velocity
+			particle_scale = emitter_scale
+			birth_basis = emitter.basis
+		else:
+			particle_scale = float(particle["birth_scale"])
+			birth_basis = particle["birth_basis"]
+
+		var extent: float = lerpf(size_min, size_max, byte_track(unit, 3, age))
+		var half_x: float = extent * particle_scale
+		var half_y: float = half_x * fixed_aspect
+		if half_x <= EPSILON or half_y <= EPSILON:
+			continue
+
+		var axes: Basis = camera_basis
+		if facing == 1 and velocity.length_squared() > EPSILON * EPSILON:
+			var vel_len: float = velocity.length()
+			var x_axis: Vector3 = velocity / vel_len
+			var y_axis: Vector3 = safe_normal(
+				x_axis.cross(-camera_basis.z), camera_basis.y
+			)
+			axes = Basis(x_axis, y_axis, x_axis.cross(y_axis))
+			half_x += vel_len * stretch_val
+		elif facing > 1:
+			axes = normalized_columns(birth_basis) * dir_plane
+
+		var angle: float = float(particle["angle"])
+		if absf(angle) > 0.0001:
+			var c: float = cos(angle)
+			var s: float = sin(angle)
+			var old_x: Vector3 = axes.x
+			var old_y: Vector3 = axes.y
+			axes = Basis(
+				old_x * c - old_y * s,
+				old_x * s + old_y * c,
+				axes.z
+			)
+
+		var rect: Rect2 = static_rect
+		if total_frames > 1:
+			var frame: int = clampi(int(age * float(total_frames)), 0, total_frames - 1)
+			rect = Rect2(
+				uv_ox + float(frame % columns) * uv_cx,
+				uv_oy + float(int(frame / columns) % rows) * uv_cy,
+				uv_cx,
+				uv_cy
+			)
+
+		var emitter_tint: Color = particle["tint"] if use_birth_tint else shared_tint
+		var emitter_add: Color = particle["add"] if use_birth_add else shared_add
+		out_packets.append({
+			"id": "p:%d" % int(particle["id"]),
+			"order": index,
+			"xf": Transform3D(Basis(axes.x * half_x, axes.y * half_y, axes.z), location),
+			"texture": texture,
+			"uv": rect,
+			"tint": color_track(unit, 0, age) * emitter_tint,
+			"add": color_track(unit, 1, age) + emitter_add,
+			"hue": byte_track(unit, 0, age),
+			"brightness": byte_track(unit, 1, age) * bright_mul,
+			"saturation": byte_track(unit, 2, age),
+			"blend": blend_mode,
+			"depth": depth_mode,
+			"strips": 1,
+			"fade": Vector2.ZERO,
+			"fade_center": Vector2.ZERO,
+		})
 
 
 func _draw_packets(context: Dictionary) -> Array:
@@ -1040,9 +1111,7 @@ func _draw_packets(context: Dictionary) -> Array:
 				packets.append(packet)
 		elif kind == 0:
 			var particles: Array = states[i]["particles"]
-			for j in range(particles.size() - 1, -1, -1):
-				var packet: Dictionary = _particle_packet(i, particles[j], context)
-				if not packet.is_empty():
-					packets.append(packet)
+			if not particles.is_empty():
+				_emit_particle_packets(i, particles, context, packets)
 		# TODO: Other unit classes retain timing/attachment proxies only.
 	return packets
