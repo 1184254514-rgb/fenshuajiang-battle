@@ -88,11 +88,12 @@ function H.Sync()
    if type(w) == 'table' and w.__node then w.__bh_show, w.__bh_text, w.__bh_enable, w.__bh_range, w.__bh_pos = nil, nil, nil, nil, nil end
   end
   for _, w in ipairs({gm.m_wndExpProgress, gm.m_pWndGameTime, b.m_pBtnSkill, gm.m_pWndTaskTips, gm.m_pWndTask}) do
-   if w then w.__bh_show, w.__bh_text, w.__bh_enable, w.__bh_range, w.__bh_pos = nil, nil, nil, nil, nil end
+   if w then w.__bh_show, w.__bh_text, w.__bh_enable, w.__bh_range, w.__bh_pos, w.__bh_tip_sig = nil, nil, nil, nil, nil, nil end
   end
+  gm.__bh_tooltips_active = false
   for i = 1, 3 do
    local s = b.m_tblWndPassive[i]
-   if s then s.__bh_show, s.__bh_text = nil, nil end
+   if s then s.__bh_show, s.__bh_text, s.__bh_tip_sig = nil, nil, nil end
    local plv = gm.__bh_refs.passive_lv[i]
    if plv then plv.__bh_text = nil end
   end
@@ -151,7 +152,14 @@ function H.Sync()
   gm.__bh_clock_sec = seconds
   set_text(gm.m_pWndGameTime, string.format('%02d:%02d',math.floor(seconds/60),seconds%60))
  end
- if not p or not sc.__started or sc.__match_finished then return end
+ local hud_fx = Host and Host.scene_view and Host.scene_view.hud_fx
+ if not p or not sc.__started or sc.__match_finished then
+  if hud_fx and hud_fx.clear_skill_tooltips and gm.__bh_tooltips_active then
+   gm.__bh_tooltips_active = false
+   hud_fx:clear_skill_tooltips()
+  end
+  return
+ end
  local deathTip=gm.m_pWndTyro
  if deathTip and deathTip.m_wndContent and not network then
   if not p.__alive then
@@ -164,12 +172,25 @@ function H.Sync()
  local rows=catalog()
  local id=p.__skillID or SceneSkills.selected
  local button=b.m_pBtnSkill
+ if not button.__bh_longpress_bound then
+  button.__bh_longpress_bound = true
+  b.__bh_on_skill_up = function(self)
+   local fx = Host and Host.scene_view and Host.scene_view.hud_fx
+   if fx and fx.consume_active_long_press and fx:consume_active_long_press() then return end
+   self:OnSkillClick()
+  end
+  button:RemoveEventListener(WM_LBUTTONDOWN, 'OnSkillClick', b)
+  button:AddEventListener(WM_LBUTTONUP, '__bh_on_skill_up', b)
+ end
  if button.__hud_skill~=id then
   button.__hud_skill=id;button.m_nSkillID=id
   image(button,rows[id])
   -- Godot picks Controls by sibling order, independently of visual z_index.
   -- Native skill input must precede the full-screen steering sibling.
   b.__node:move_child(refs.b_jineng.__node,b.__node:get_child_count()-1)
+  if refs.jineng_box and refs.jineng_box.__node then
+   b.__node:move_child(refs.jineng_box.__node,b.__node:get_child_count()-1)
+  end
  end
  set_show(refs.b_jineng, true)
  set_show(button, true)
@@ -192,7 +213,6 @@ function H.Sync()
  set_enable(button, p.__alive and cooldown<=0)
  -- Let SkillFuseOverlay draw the 1:1 cooldown-synchronized burning fuse + countdown cleanly;
  -- keep native button text empty so digits never double-draw.
- local hud_fx = Host and Host.scene_view and Host.scene_view.hud_fx
  if hud_fx and button.__node then
   set_text(button, '')
   hud_fx:set_skill_fuse(button.__node, cd_ratio, cd_ratio, is_cd, is_cd, cd_sec, tonumber(p.__skill_cast_serial) or 0)
@@ -203,8 +223,20 @@ function H.Sync()
  else
   set_text(button, is_cd and tostring(cd_sec) or '')
  end
- set_text(refs.b_jineng_lv, (p.__skill_level or 1)>=6 and g_App:GetString('levelmax') or (p.__skill_level or 1))
+ local active_lv = p.__skill_level or 1
+ set_text(refs.b_jineng_lv, active_lv>=6 and g_App:GetString('levelmax') or active_lv)
  set_show(refs.jineng_box, true)
+ if hud_fx and hud_fx.set_skill_tooltip_slot and button.__node and SceneSkills and SceneSkills.GetSkillTooltip then
+  local tip_sig = tostring(id) .. ':' .. tostring(active_lv)
+  if button.__bh_tip_sig ~= tip_sig or not gm.__bh_tooltips_active then
+   button.__bh_tip_sig = tip_sig
+   gm.__bh_tooltips_active = true
+   local info = SceneSkills.GetSkillTooltip(id, active_lv)
+   if info then
+    hud_fx:set_skill_tooltip_slot('active', button.__node, info.title, info.tag, info.effect, info.desc)
+   end
+  end
+ end
  -- Hide duplicate bottom self-rank row when director is already shown in the top-5 list (checked every 250ms).
  if refs.rank1_self and SceneMatch and SceneMatch.GetPlayerRank then
   if not gm.__bh_rank_at or now_ms - gm.__bh_rank_at >= 250 then
@@ -247,6 +279,21 @@ function H.Sync()
     if slot.__hud_skill~=pid then slot.__hud_skill=pid;image(slot,rows[pid]) end
     local lv=(p.__skill_passive_levels or {})[i] or 1
     set_text(refs.passive_lv[i], lv>=6 and g_App:GetString('levelmax') or lv)
+    if hud_fx and hud_fx.set_skill_tooltip_slot and slot.__node and SceneSkills and SceneSkills.GetSkillTooltip then
+     local psig = tostring(pid) .. ':' .. tostring(lv)
+     if slot.__bh_tip_sig ~= psig then
+      slot.__bh_tip_sig = psig
+      local info = SceneSkills.GetSkillTooltip(pid, lv)
+      if info then
+       hud_fx:set_skill_tooltip_slot('passive_' .. tostring(i), slot.__node, info.title, info.tag, info.effect, info.desc)
+      end
+     end
+    end
+   elseif slot.__bh_tip_sig ~= '' then
+    slot.__bh_tip_sig = ''
+    if hud_fx and hud_fx.set_skill_tooltip_slot then
+     hud_fx:set_skill_tooltip_slot('passive_' .. tostring(i), nil, '', '', '', '')
+    end
    end
   end
  end

@@ -5,6 +5,21 @@ extends Node
 
 var ui_root: Control
 var _states: Dictionary = {}
+var _tooltip_slots: Dictionary = {}
+var _tooltip_panel: PanelContainer = null
+var _tooltip_title: Label = null
+var _tooltip_tag: Label = null
+var _tooltip_effect: Label = null
+var _tooltip_desc: Label = null
+var _tooltip_font: Font = preload("res://fonts/ZCOOLKuaiLe-Regular.ttf")
+var _press_slot_key: String = ""
+var _press_origin: Vector2 = Vector2.ZERO
+var _press_elapsed: float = 0.0
+var _press_shown: bool = false
+var _press_touch_index: int = -1
+var _active_long_pressed: bool = false
+const SKILL_LONG_PRESS_SEC := 0.25
+const SKILL_DRAG_CANCEL_PX := 48.0
 
 
 class EffectMark extends Control:
@@ -36,6 +51,7 @@ class EffectMark extends Control:
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	set_process(true)
+	set_process_input(true)
 
 
 func set_ui_root(root: Control) -> void:
@@ -634,6 +650,239 @@ func set_skill_fuse(
 	overlay.sync_state(active_ratio, cd_ratio, is_active, is_cd, cd_sec, cast_serial)
 
 
+func set_skill_tooltip_slot(
+	slot_key: String,
+	target: Control,
+	title: String,
+	tag: String,
+	effect: String,
+	desc: String
+) -> void:
+	if slot_key.is_empty():
+		return
+	if not is_instance_valid(target) or title.is_empty():
+		_tooltip_slots.erase(slot_key)
+		if _press_slot_key == slot_key:
+			_hide_skill_tooltip()
+		return
+	_tooltip_slots[slot_key] = {
+		"target": weakref(target),
+		"title": title,
+		"tag": tag,
+		"effect": effect,
+		"desc": desc,
+		"is_active": slot_key == "active",
+	}
+	if _press_shown and _press_slot_key == slot_key:
+		_show_skill_tooltip_for_slot(slot_key)
+
+
+func clear_skill_tooltips() -> void:
+	_tooltip_slots.clear()
+	_active_long_pressed = false
+	_hide_skill_tooltip()
+
+
+func consume_active_long_press() -> bool:
+	var was := _active_long_pressed
+	_active_long_pressed = false
+	return was
+
+
+func _ensure_skill_tooltip_ui() -> PanelContainer:
+	if is_instance_valid(_tooltip_panel):
+		return _tooltip_panel
+	var parent: Node = ui_root if is_instance_valid(ui_root) else get_tree().root
+	if not is_instance_valid(parent):
+		return null
+	var panel := PanelContainer.new()
+	panel.name = "SkillLongPressTooltip"
+	panel.visible = false
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.z_index = 4000
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.06, 0.11, 0.19, 0.94)
+	style.border_color = Color(1.0, 0.84, 0.36, 0.95)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(12)
+	style.content_margin_left = 14
+	style.content_margin_right = 14
+	style.content_margin_top = 10
+	style.content_margin_bottom = 12
+	style.shadow_color = Color(0.0, 0.0, 0.0, 0.48)
+	style.shadow_size = 10
+	panel.add_theme_stylebox_override("panel", style)
+
+	var vbox := VBoxContainer.new()
+	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.add_theme_constant_override("separation", 5)
+	vbox.custom_minimum_size = Vector2(248, 0)
+	panel.add_child(vbox)
+
+	var header := HBoxContainer.new()
+	header.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	header.add_theme_constant_override("separation", 8)
+	vbox.add_child(header)
+
+	_tooltip_title = Label.new()
+	_tooltip_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tooltip_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_tooltip_title.add_theme_font_override("font", _tooltip_font)
+	_tooltip_title.add_theme_font_size_override("font_size", 20)
+	_tooltip_title.add_theme_color_override("font_color", Color(1.0, 0.87, 0.38, 1.0))
+	header.add_child(_tooltip_title)
+
+	_tooltip_tag = Label.new()
+	_tooltip_tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tooltip_tag.add_theme_font_override("font", _tooltip_font)
+	_tooltip_tag.add_theme_font_size_override("font_size", 14)
+	_tooltip_tag.add_theme_color_override("font_color", Color(0.55, 0.92, 1.0, 1.0))
+	header.add_child(_tooltip_tag)
+
+	_tooltip_effect = Label.new()
+	_tooltip_effect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tooltip_effect.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_tooltip_effect.custom_minimum_size = Vector2(248, 0)
+	_tooltip_effect.add_theme_font_override("font", _tooltip_font)
+	_tooltip_effect.add_theme_font_size_override("font_size", 16)
+	_tooltip_effect.add_theme_color_override("font_color", Color(0.42, 0.96, 0.62, 1.0))
+	vbox.add_child(_tooltip_effect)
+
+	_tooltip_desc = Label.new()
+	_tooltip_desc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tooltip_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_tooltip_desc.custom_minimum_size = Vector2(248, 0)
+	_tooltip_desc.add_theme_font_override("font", _tooltip_font)
+	_tooltip_desc.add_theme_font_size_override("font_size", 15)
+	_tooltip_desc.add_theme_color_override("font_color", Color(0.95, 0.97, 1.0, 0.96))
+	vbox.add_child(_tooltip_desc)
+
+	parent.add_child(panel)
+	_tooltip_panel = panel
+	return panel
+
+
+func _hide_skill_tooltip() -> void:
+	_press_slot_key = ""
+	_press_elapsed = 0.0
+	_press_shown = false
+	_press_touch_index = -1
+	if is_instance_valid(_tooltip_panel):
+		_tooltip_panel.visible = false
+
+
+func _slot_control(slot_key: String) -> Control:
+	if not _tooltip_slots.has(slot_key):
+		return null
+	var ref: WeakRef = _tooltip_slots[slot_key].get("target") as WeakRef
+	if ref == null:
+		return null
+	var ctrl: Control = ref.get_ref() as Control
+	if not is_instance_valid(ctrl) or not ctrl.is_visible_in_tree():
+		return null
+	return ctrl
+
+
+func _hit_tooltip_slot(pos: Vector2) -> String:
+	for key in _tooltip_slots:
+		var ctrl := _slot_control(String(key))
+		if ctrl != null and ctrl.get_global_rect().has_point(pos):
+			return String(key)
+	return ""
+
+
+func _show_skill_tooltip_for_slot(slot_key: String) -> void:
+	var ctrl := _slot_control(slot_key)
+	if ctrl == null or not _tooltip_slots.has(slot_key):
+		_hide_skill_tooltip()
+		return
+	var panel := _ensure_skill_tooltip_ui()
+	if panel == null:
+		return
+	var data: Dictionary = _tooltip_slots[slot_key]
+	_tooltip_title.text = String(data.get("title", ""))
+	_tooltip_tag.text = String(data.get("tag", ""))
+	var eff := String(data.get("effect", ""))
+	_tooltip_effect.visible = not eff.is_empty()
+	_tooltip_effect.text = "当前效果：" + eff
+	var desc := String(data.get("desc", ""))
+	_tooltip_desc.visible = not desc.is_empty()
+	_tooltip_desc.text = desc
+
+	panel.size = Vector2.ZERO
+	var sz := panel.get_combined_minimum_size()
+	panel.size = sz
+	var rect := ctrl.get_global_rect()
+	var vp_size := get_viewport().get_visible_rect().size
+	var x := rect.position.x + (rect.size.x - sz.x) * 0.5
+	var y := rect.position.y - sz.y - 12.0
+	if y < 12.0:
+		y = rect.position.y + rect.size.y + 12.0
+	x = clampf(x, 12.0, maxf(12.0, vp_size.x - sz.x - 12.0))
+	y = clampf(y, 12.0, maxf(12.0, vp_size.y - sz.y - 12.0))
+	panel.global_position = Vector2(x, y)
+	panel.visible = true
+	_press_shown = true
+	if bool(data.get("is_active", false)):
+		_active_long_pressed = true
+
+
+func _input(event: InputEvent) -> void:
+	if _tooltip_slots.is_empty():
+		return
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		if mb.button_index != MOUSE_BUTTON_LEFT:
+			return
+		if mb.pressed:
+			var hit := _hit_tooltip_slot(mb.position)
+			if not hit.is_empty():
+				_press_slot_key = hit
+				_press_origin = mb.position
+				_press_elapsed = 0.0
+				_press_shown = false
+				_press_touch_index = -1
+				if hit == "active":
+					_active_long_pressed = false
+				else:
+					get_viewport().set_input_as_handled()
+		else:
+			if not _press_slot_key.is_empty():
+				var was_passive := _press_slot_key != "active"
+				_hide_skill_tooltip()
+				if was_passive:
+					get_viewport().set_input_as_handled()
+	elif event is InputEventMouseMotion:
+		if not _press_slot_key.is_empty() and _press_touch_index < 0:
+			var mm := event as InputEventMouseMotion
+			if mm.position.distance_to(_press_origin) > SKILL_DRAG_CANCEL_PX:
+				_hide_skill_tooltip()
+	elif event is InputEventScreenTouch:
+		var st := event as InputEventScreenTouch
+		if st.pressed:
+			var hit := _hit_tooltip_slot(st.position)
+			if not hit.is_empty():
+				_press_slot_key = hit
+				_press_origin = st.position
+				_press_elapsed = 0.0
+				_press_shown = false
+				_press_touch_index = st.index
+				if hit == "active":
+					_active_long_pressed = false
+				else:
+					get_viewport().set_input_as_handled()
+		elif st.index == _press_touch_index and not _press_slot_key.is_empty():
+			var was_passive := _press_slot_key != "active"
+			_hide_skill_tooltip()
+			if was_passive:
+				get_viewport().set_input_as_handled()
+	elif event is InputEventScreenDrag:
+		var sd := event as InputEventScreenDrag
+		if sd.index == _press_touch_index and not _press_slot_key.is_empty():
+			if sd.position.distance_to(_press_origin) > SKILL_DRAG_CANCEL_PX:
+				_hide_skill_tooltip()
+
+
 func _cancel_state(state: Dictionary) -> void:
 	_stop_effect_state(state)
 	_kill_tween(state, "move_tween")
@@ -659,7 +908,15 @@ func cancel_tree(root: Control) -> void:
 			_cancel_state(state)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	if not _press_slot_key.is_empty():
+		var ctrl := _slot_control(_press_slot_key)
+		if ctrl == null:
+			_hide_skill_tooltip()
+		elif not _press_shown:
+			_press_elapsed += delta
+			if _press_elapsed >= SKILL_LONG_PRESS_SEC:
+				_show_skill_tooltip_for_slot(_press_slot_key)
 	var stale: Array = []
 	for id in _states:
 		var state: Dictionary = _states[id]
@@ -674,6 +931,7 @@ func _process(_delta: float) -> void:
 
 
 func _exit_tree() -> void:
+	clear_skill_tooltips()
 	for value in _states.values():
 		var state: Dictionary = value
 		_cancel_state(state)

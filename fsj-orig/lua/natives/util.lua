@@ -268,8 +268,9 @@ function CDir:Set(value, y)
 	if x == 0 and y == 0 then
 		self:uDir(0)
 	else
-		local radians = math.atan(y, x)
-		self:uDir(math.floor(radians * 256 / (2 * math.pi) + 0.5))
+		-- Original Gamma CDir convention: 0 = up (+Y), 64 = right (+X), 128 = down (-Y), 192 = left (-X).
+		local radians = math.atan(x, y) % (2 * math.pi)
+		self:uDir(math.floor(radians * 256 / (2 * math.pi) + 0.5) % 256)
 	end
 	return self
 end

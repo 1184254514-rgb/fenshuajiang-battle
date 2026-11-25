@@ -407,6 +407,28 @@ local function skill_level_effect(id, lv)
 	return nil
 end
 
+local function clean_rich_text(text)
+	local s = tostring(text or "")
+	s = s:gsub("#r", "\n"):gsub("#c%x%x%x%x%x%x%x%x", ""):gsub("#n", "")
+	return (s:gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+function S.GetSkillTooltip(id, lv)
+	load_data()
+	id = tonumber(id) or 0
+	local r = resources[id]
+	if not r then return nil end
+	local level = math.max(1, math.min(6, tonumber(lv) or 1))
+	local is_active = tonumber(r.nSkillType) == 1
+	local name = skill_name(id)
+	local level_label = level >= 6 and "满级" or ("Lv." .. tostring(level))
+	local title = string.format("%s  (%s)", name, level_label)
+	local tag = is_active and "主动技能" or "被动技能"
+	local effect = skill_level_effect(id, level) or ""
+	local desc = clean_rich_text(dictionary[r.dDescription] or r.dDescription or "")
+	return { title = title, tag = tag, effect = effect, desc = desc }
+end
+
 local function select_skill_card_for_item(item)
 	local gs = g_App and g_App.GetGameStart and g_App:GetGameStart()
 	local w = gs and gs.m_pWndSkillDevelop
@@ -620,6 +642,15 @@ function S.InstallHooks()
 			function CWndMusicItemHave:OnCreated(...)
 				self.m_tblMusicIDAll = self.m_tblMusicIDAll or {}
 				return orig_mcreated(self,...)
+			end
+		end
+	end
+	if CSignInWnd then
+		local orig_signin_loaded=CSignInWnd.OnItemListLoaded
+		if orig_signin_loaded then
+			function CSignInWnd:OnItemListLoaded(...)
+				if not self.m_nMonthDays then return end
+				return orig_signin_loaded(self,...)
 			end
 		end
 	end
