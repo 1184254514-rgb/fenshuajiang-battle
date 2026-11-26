@@ -1306,6 +1306,9 @@ func _draw_progress_fill() -> void:
 
 
 func _draw_plain_text() -> void:
+	if wnd_text.find("#") >= 0:
+		_draw_rich_text()
+		return
 	var font := _font()
 	var font_size := _font_size()
 	var lines := wnd_text.split("\n", true)
@@ -1431,47 +1434,86 @@ func _parse_rich_segments(source: String) -> Array:
 	# Keep parsed colors unfaded; all rich runs use the same single fade path.
 	var default_color := _get_text_color(false)
 	var current_color := default_color
+	var color_stack: Array[Color] = []
 	var active_link := ""
 	var buffer := ""
 	var index := 0
 
 	while index < source.length():
-		var marker := source.substr(index, 2)
-		if marker == "#r":   # CGRichWnd line break (Claude)
-			buffer += "\n"
-			index += 2
-			continue
-		if marker == "#n":
-			if buffer != "":
-				result.append({"text": buffer, "color": current_color, "link": active_link})
-				buffer = ""
-			current_color = default_color
-			active_link = ""
-			index += 2
-			continue
-
-		if marker == "#c" and index + 10 <= source.length():
-			var color_hex := source.substr(index + 2, 8)
-			if _is_hex_color(color_hex):
+		if source.substr(index, 1) == "#" and index + 1 < source.length():
+			var marker := source.substr(index, 2)
+			var tag := source.substr(index + 1, 1)
+			if marker == "##":
+				buffer += "#"
+				index += 2
+				continue
+			if marker == "#r" or marker == "#R":   # CGRichWnd line break
+				buffer += "\n"
+				index += 2
+				continue
+			if marker == "#n" or marker == "#N":
 				if buffer != "":
 					result.append({"text": buffer, "color": current_color, "link": active_link})
 					buffer = ""
-				current_color = _color_from_argb(color_hex.hex_to_int())
-				index += 10
+				current_color = default_color
+				color_stack.clear()
+				active_link = ""
+				index += 2
 				continue
-
-		if (marker == "#l" or marker == "#h") and index + 2 < source.length():
-			var open_char := source.substr(index + 2, 1)
-			if open_char == "[" or open_char == "{":
-				var close_char := "]" if open_char == "[" else "}"
-				var close_index := source.find(close_char, index + 3)
-				if close_index >= 0:
+			if marker == "#{":
+				if buffer != "":
+					result.append({"text": buffer, "color": current_color, "link": active_link})
+					buffer = ""
+				color_stack.append(current_color)
+				index += 2
+				continue
+			if marker == "#}":
+				if buffer != "":
+					result.append({"text": buffer, "color": current_color, "link": active_link})
+					buffer = ""
+				current_color = color_stack.pop_back() if not color_stack.is_empty() else default_color
+				index += 2
+				continue
+			if (marker == "#c" or marker == "#C") and index + 10 <= source.length():
+				var color_hex := source.substr(index + 2, 8)
+				if _is_hex_color(color_hex):
 					if buffer != "":
 						result.append({"text": buffer, "color": current_color, "link": active_link})
 						buffer = ""
-					active_link = source.substr(index + 3, close_index - index - 3)
-					index = close_index + 1
+					current_color = _color_from_argb(color_hex.hex_to_int())
+					index += 10
 					continue
+			if (tag == "e" or tag == "E" or tag == "s" or tag == "S") and index + 10 <= source.length():
+				var edge_hex := source.substr(index + 2, 8)
+				if _is_hex_color(edge_hex):
+					index += 10
+					continue
+			if tag == "f" or tag == "F" or tag == "P" or tag == "p":
+				var end_i := index + 2
+				while end_i < source.length():
+					var ch := source.substr(end_i, 1)
+					if ch >= "0" and ch <= "9":
+						end_i += 1
+					else:
+						break
+				if end_i > index + 2:
+					index = end_i
+					continue
+			if tag == "u" or tag == "U" or tag == "b" or tag == "B" or tag == "i" or tag == "I":
+				index += 2
+				continue
+			if (marker == "#l" or marker == "#h") and index + 2 < source.length():
+				var open_char := source.substr(index + 2, 1)
+				if open_char == "[" or open_char == "{":
+					var close_char := "]" if open_char == "[" else "}"
+					var close_index := source.find(close_char, index + 3)
+					if close_index >= 0:
+						if buffer != "":
+							result.append({"text": buffer, "color": current_color, "link": active_link})
+							buffer = ""
+						active_link = source.substr(index + 3, close_index - index - 3)
+						index = close_index + 1
+						continue
 
 		buffer += source.substr(index, 1)
 		index += 1
