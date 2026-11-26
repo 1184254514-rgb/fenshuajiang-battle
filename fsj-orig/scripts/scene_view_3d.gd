@@ -289,6 +289,7 @@ void fragment() {
 
 
 func _ready() -> void:
+	process_priority = -10
 	super._ready()
 	# the original ground texture (CGameAppClient + 0x258): gui/tex/tcs_dt.tex, a 256 px grid of 16 px cells (Claude)
 	if original_ground_texture == null and ResourceLoader.exists("res://assets/tex/tcs_dt.png"):
@@ -1549,23 +1550,23 @@ func set_player(id: int, x: float, y: float, color_id: int, nick: String, alive:
 	if not alive:
 		return
 	var p := _w2v(x, y)
-	var now := Time.get_ticks_msec()
-	var dt := (now - int(a.get("t", now))) / 1000.0
-	if dt > 0.0:
+	var now_us := Time.get_ticks_usec()
+	var dt := float(now_us - int(a.get("t_us", now_us))) / 1000000.0
+	if dt > 0.0005:
 		var v: float = (p - a["last"]).length() / dt
 		if v < 40.0:
 			# Snap immediately across the run_w/sprint boundary (~8 cells/s) so the
 			# trailing ribbon reacts on the very next frame after rhythm speedup/slowdown.
-			if v > 8.5 or v < 7.0:
+			if v > 8.2 or v < 7.2:
 				a["spd"] = v
 			else:
-				a["spd"] = lerpf(float(a.get("spd", 5.0)), v, clampf(dt * 30.0, 0.0, 1.0))
-		a["t"] = now
+				a["spd"] = lerpf(float(a.get("spd", 5.0)), v, clampf(dt * 40.0, 0.0, 1.0))
+		a["t_us"] = now_us
 		var spd: float = float(a.get("spd", 5.0))
 		if a["state"] != "fly_die":
 			_play(a, "stand" if spd < 0.5 else ("sprint" if spd > 8.0 else "run_w"))
 	else:
-		a["t"] = now
+		a["t_us"] = now_us
 	var d: Vector3 = p - a["last"]
 	if d.length() > 0.01 and d.length() < 4.0:
 		a["yaw"] = atan2(d.x, d.z) + PI
@@ -1633,7 +1634,7 @@ func _play(a: Dictionary, anim_name: String) -> void:
 	if ap == null or a.get("state", "") == anim_name or not (ap as AnimationPlayer).has_animation(anim_name):
 		return
 	a["state"] = anim_name
-	(ap as AnimationPlayer).play(anim_name, 0.12)
+	(ap as AnimationPlayer).play(anim_name, 0.04)
 	_update_state_fx(a, anim_name)
 
 
@@ -1739,7 +1740,7 @@ func _process(delta: float) -> void:
 		if network_replica and a.has("net_target"):
 			a["net_age"] = minf(float(a.get("net_age", 0.0)) + delta, 0.1)
 			node.position = (a["net_from"] as Vector3).lerp(a["net_target"], float(a["net_age"]) / 0.1)
-		node.rotation.y = lerp_angle(node.rotation.y, a["yaw"], clampf(delta * 14.0, 0.0, 1.0))
+		node.rotation.y = lerp_angle(node.rotation.y, a["yaw"], 1.0 - exp(-36.0 * delta))
 		if players.has(id) and players[id]["director"]:
 			_beat_sync_anim(a)
 		var sfx = a.get("state_fx")

@@ -62,6 +62,7 @@ static func spawn_world(
 
 
 func _ready() -> void:
+	process_priority = 10
 	if _simulation == null:
 		set_process(false)
 		return

@@ -23,6 +23,7 @@ func _ready() -> void:
 	ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(ui)
 	host = LuaHost.new()
+	host.process_priority = -20
 	add_child(host)
 	if not host.start(ui):
 		push_error("Lua host failed to start")
