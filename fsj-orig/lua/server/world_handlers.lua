@@ -381,7 +381,7 @@ local function defaults()
 		headIcon = 1,
 		exp = 0,
 		level = 1,
-		stars = 0,
+		stars = 7,
 		curSkin = 1,
 		curMusic = music_id,
 		curSkill = 3,
