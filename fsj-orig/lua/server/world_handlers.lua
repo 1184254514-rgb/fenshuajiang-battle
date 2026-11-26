@@ -406,11 +406,12 @@ local function defaults()
 		treasureBoxes = {},
 		settings = {},
 		scores = {
-			endless = 0,
-			limit = 0,
-			team = 0,
+			endless = 10000,
+			limit = 10000,
+			team = 5000,
 			race = 0,
 		},
+		goldStarterApplied = true,
 		-- offline: team mode counts as unlocked (eFE_GetTeamModeOpenPrize = 3) so the skill page opens,
 		-- and first-time skill guide popup (eFE_ShowSkillDirections = 9) is marked seen (still accessible via '?').
 		firstEvents = { ["3"] = 1, ["9"] = 1 },
@@ -470,6 +471,12 @@ local function ensure_profile()
 	end
 	if p.firstEvents["3"] == nil and p.firstEvents[3] == nil then p.firstEvents["3"] = 1 end   -- see default profile
 	if p.firstEvents["9"] == nil and p.firstEvents[9] == nil then p.firstEvents["9"] = 1 end
+	if not p.goldStarterApplied then
+		p.goldStarterApplied = true
+		if number(p.stars, 0) < 7 then p.stars = 7 end
+		if number(p.scores.endless, 0) < 10000 then p.scores.endless = 10000 end
+		if number(p.scores.limit, 0) < 10000 then p.scores.limit = 10000 end
+	end
 	if number(p.curSkill, 0) <= 0 then p.curSkill = 3 end
 	if number(p.curMusic, 0) < 100 then p.curMusic = 121 end
 	if type(p.owned.music) == "table" then
