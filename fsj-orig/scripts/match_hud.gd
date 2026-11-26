@@ -83,6 +83,18 @@ func _build_results() -> void:
 	# No unavailable friend/report/share/coin or ladder service is connected.
 	_pages[0].get_node("jinbi").hide()
 	_pages[0].get_node("duanwei").hide()
+	var rank_badge := Label.new()
+	rank_badge.name = "RankResultBadge"
+	rank_badge.position = Vector2(360, 14)
+	rank_badge.size = Vector2(560, 38)
+	rank_badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	rank_badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	rank_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rank_badge.add_theme_font_override("font", preload("res://fonts/ZCOOLKuaiLe-Regular.ttf"))
+	rank_badge.add_theme_font_size_override("font_size", 24)
+	rank_badge.add_theme_color_override("font_outline_color", Color(0.05, 0.12, 0.22, 0.95))
+	rank_badge.add_theme_constant_override("outline_size", 5)
+	_result_frame.add_child(rank_badge)
 	var list = _pages[0].get_node("list")
 	list.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_scroll = ScrollContainer.new()
@@ -175,6 +187,19 @@ func _fill_details(stats: Dictionary) -> void:
 func _fill_results(lines: PackedStringArray) -> void:
 	var stats = JSON.parse_string(str(host.lua.do_string("return SceneMatch.SettlementDataJSON()")))
 	if not stats is Dictionary: return
+	var rank_badge := _result_frame.get_node_or_null("RankResultBadge") as Label
+	if rank_badge != null:
+		var rname := str(stats.get("rankName", ""))
+		var rbefore := int(stats.get("rankBefore", 0))
+		var rafter := int(stats.get("rankAfter", 0))
+		var rdelta := int(stats.get("rankDelta", 0))
+		if rname != "":
+			var delta_str := ("+%d星" % rdelta) if rdelta > 0 else (("%d星" % rdelta) if rdelta < 0 else "保星")
+			rank_badge.text = "当前段位：%s  (%s · 总星数 %d → %d)" % [rname, delta_str, rbefore, rafter]
+			rank_badge.add_theme_color_override("font_color", Color("4cf58b") if rdelta > 0 else (Color("ff6b6b") if rdelta < 0 else Color("ffe066")))
+			rank_badge.visible = true
+		else:
+			rank_badge.visible = false
 	_fill_details(stats)
 	for child in _rows.get_children():
 		_rows.remove_child(child)

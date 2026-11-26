@@ -110,6 +110,18 @@ function M.GetPlayerRank(sc, objectID)
     return 0
 end
 
+-- Rank-tiered AI rosters (BigLevel 1=青铜 .. 8=王者), mapped to SceneAI / ai.txt profile IDs.
+M.AI_POOLS = {
+    [1] = { 1, 1, 2, 2, 1, 2, 3, 1, 2 },               -- 青铜：新手节奏偏慢、保守
+    [2] = { 2, 2, 3, 3, 21, 2, 3, 4, 21 },             -- 白银：初级进阶 + 少量平衡型
+    [3] = { 3, 4, 11, 22, 22, 31, 3, 22, 12 },         -- 黄金：中级混合 + 少量进攻型
+    [4] = { 12, 13, 23, 23, 32, 32, 13, 23, 32 },      -- 铂金：节奏准确提升、积极切线
+    [5] = { 13, 14, 24, 24, 33, 33, 24, 34, 14 },      -- 钻石：高频反应 + 强对抗
+    [6] = { 14, 15, 24, 25, 34, 34, 25, 35, 15 },      -- 大师：精英节奏 + 高压切线
+    [7] = { 15, 25, 25, 34, 35, 35, 34, 35, 1011 },    -- 宗师：360ms 极速思考 + 顶尖节奏
+    [8] = { 25, 35, 35, 35, 1011, 1011, 35, 25, 1011 },-- 王者：全员顶尖硬核 AI
+}
+
 function M.Configure(sc, duration_ms)
     assert(sc and sc.__roomType == 0, "Timed competition requires the local room-0 world")
     sc.__timed_match = true
@@ -120,6 +132,13 @@ function M.Configure(sc, duration_ms)
     sc.__match_finished, sc.__match_results = false, nil
     sc.__match_respawns, sc.__match_roster_ready = {}, false
     sc.__match_seed_attempts = 0
+    sc.__match_rank_applied, sc.__match_rank_result = false, nil
+    local rank_info = FakeWorld and type(FakeWorld.GetRankInfo) == "function" and FakeWorld.GetRankInfo() or { stars = 0, tier = 1, name = "青铜" }
+    sc.__match_rank_tier = rank_info.tier or 1
+    sc.__match_rank_stars = rank_info.stars or 0
+    if SceneAI and type(SceneAI.SetMatch) == "function" then
+        SceneAI.SetMatch(sc, 0, sc.__match_rank_stars)
+    end
     if SceneProgression then SceneProgression.Configure(sc) end
     stop_endless_checks(sc)
     hide_old_results(sc)
@@ -260,6 +279,14 @@ function M.Finish(sc)
     if SceneScore then SceneScore.OnUpdateManorScore(sc) end
     sc.__match_results = standings(sc)
     sc.__match_finished, sc.__started = true, false
+    if not sc.__match_rank_applied and not sc.__lan_client and FakeWorld and type(FakeWorld.ApplyMatchRank) == "function" then
+        sc.__match_rank_applied = true
+        local my_rank = 10
+        for _, row in ipairs(sc.__match_results or {}) do
+            if row.director then my_rank = row.rank; break end
+        end
+        sc.__match_rank_result = FakeWorld.ApplyMatchRank(my_rank)
+    end
     stop_endless_checks(sc)
     local wf = sc.m_pWanfa
     if wf then
@@ -293,9 +320,14 @@ function M.Tick(sc, _dt)
         local bots = 0
         for _, p in ipairs(sc.__order or {}) do if p.__ai then bots = bots + 1 end end
         local target = math.min(M.BOT_COUNT, math.max(1, (sc.__maxCount or 10) - 1))
+        local pool = M.AI_POOLS[sc.__match_rank_tier or 1] or M.AI_POOLS[1]
         while bots < target and type(sc.SpawnAI) == "function" do
-            local ai = sc:SpawnAI(1)
+            local ai_id = pool[(bots % #pool) + 1] or 1
+            local ai = sc:SpawnAI(ai_id)
             if not ai then break end
+            if SceneAI and type(SceneAI.SetPlayerConfig) == "function" then
+                SceneAI.SetPlayerConfig(ai, ai_id)
+            end
             bots = bots + 1
         end
         sc.__match_seed_attempts = (sc.__match_seed_attempts or 0) + 1
@@ -403,11 +435,14 @@ function M.SettlementDataJSON()
         local icon=cfg[actor.__equipID or 1]
         if icon then avatars[tostring(actor.__objectID)]={icon.fLeft,icon.fTop,icon.fRight,icon.fBottom} end
     end
+    local rr = sc.__match_rank_result or {}
     return SceneSkills.EncodeJSON({avatars=avatars,area=area,kill=kill,combo=combo,
         total=area+kill+combo,kills=st.killCount or 0,deaths=p.__deaths or 0,
         killDetails=p.__battle_kills or {},deathDetails=p.__battle_deaths or {},directorID=p.__objectID,
         countFormat=g_App:GetString("jiesuantips1"),
         counts=counts,beats=rhythm.total or 0,maxCombo=rhythm.maxCombo or 0,
-        seconds=math.floor((current_time(sc)-(sc.__match_started_at or 0))/1000)})
+        seconds=math.floor((current_time(sc)-(sc.__match_started_at or 0))/1000),
+        rankBefore=rr.before or 0,rankAfter=rr.after or 0,rankDelta=rr.delta or 0,
+        rankName=rr.name or "",rankTier=rr.tier or (sc.__match_rank_tier or 1)})
 end
 return M

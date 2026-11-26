@@ -504,6 +504,89 @@ function FakeWorld.Save()
 	end
 end
 
+local TIER_NAMES = { "青铜", "白银", "黄金", "铂金", "钻石", "大师", "宗师", "王者" }
+local star_table_cache = nil
+
+local function load_star_table()
+	if star_table_cache then return star_table_cache end
+	star_table_cache = {}
+	local raw = Host and type(Host.read_text) == "function" and Host:read_text("config/starlevel.txt") or ""
+	if type(raw) ~= "string" or raw == "" then return star_table_cache end
+	raw = raw:gsub("^\239\187\191", ""):gsub("\r\n", "\n"):gsub("\r", "\n")
+	local header = nil
+	for line in (raw .. "\n"):gmatch("(.-)\n") do
+		if line ~= "" then
+			local cells = {}
+			for cell in (line .. "\t"):gmatch("(.-)\t") do cells[#cells + 1] = cell end
+			if not header then
+				header = cells
+			else
+				local row = {}
+				for i, key in ipairs(header) do row[key] = cells[i] or "" end
+				local all_star = tonumber(row.nAllStar)
+				if all_star ~= nil then star_table_cache[all_star] = row end
+			end
+		end
+	end
+	return star_table_cache
+end
+
+local function star_row_for(stars)
+	local tbl = load_star_table()
+	local key = math.max(0, math.min(72, math.floor(number(stars, 0))))
+	if tbl[key] then return tbl[key] end
+	for k = key, 0, -1 do
+		if tbl[k] then return tbl[k] end
+	end
+	return nil
+end
+
+function FakeWorld.GetLadderStars()
+	local profile = ensure_profile()
+	return math.max(0, math.floor(number(profile.stars, 0)))
+end
+
+function FakeWorld.GetRankInfo(stars)
+	local s = stars ~= nil and math.max(0, math.floor(number(stars, 0))) or FakeWorld.GetLadderStars()
+	local row = star_row_for(s)
+	local tier = row and math.max(1, math.min(8, math.floor(number(row.nBigLevel, 1)))) or 1
+	local name = TIER_NAMES[tier] or "青铜"
+	local ok_cfg, cfg = pcall(function() return CStarLevelConfig and CStarLevelConfig:Inst() end)
+	if ok_cfg and cfg and type(cfg.GetName) == "function" then
+		local ok_n, exact = pcall(cfg.GetName, cfg, s)
+		if ok_n and type(exact) == "string" and exact ~= "" then name = exact end
+	end
+	return { stars = s, tier = tier, name = name, row = row }
+end
+
+function FakeWorld.ApplyMatchRank(rank)
+	local profile = ensure_profile()
+	local before = math.max(0, math.floor(number(profile.stars, 0)))
+	local r = math.max(1, math.min(10, math.floor(number(rank, 10))))
+	local row = star_row_for(before)
+	local delta = 0
+	if row then
+		delta = math.floor(number(row["nL" .. tostring(r)], 0))
+	else
+		delta = r <= 2 and 1 or (r >= 7 and -1 or 0)
+	end
+	local after = math.max(0, before + delta)
+	profile.stars = after
+	FakeWorld.Save()
+	local db = g_App and g_App.m_CharContext
+	local base = db and db.m_CharBaseData
+	if base then
+		if type(base.SetAllStar) == "function" then pcall(base.SetAllStar, base, after) end
+		if type(base.SetLadderStarChangeTime) == "function" then pcall(base.SetLadderStarChangeTime, base, os.time()) end
+	end
+	local season = value(db, "m_SeasonStarNum")
+	if season then set_data(season, 0, after) end
+	local gs = g_App and g_App.GetGameStart and g_App:GetGameStart()
+	if gs and type(gs.RefreshLadder) == "function" then pcall(gs.RefreshLadder, gs) end
+	local info = FakeWorld.GetRankInfo(after)
+	return { before = before, after = after, delta = after - before, tier = info.tier, name = info.name }
+end
+
 local function class_named(name)
 	local cls = rawget(_G, name)
 	if type(cls) == "table" and type(cls.new) == "function" then
