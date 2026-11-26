@@ -1130,10 +1130,9 @@ class UnitRuntime extends Node:
 				# A stationary emitter refreshes the final sample timestamp.
 				_tail["time"] = wall_ms
 				return
-			# Cap straight-line pose insertion at ~80 Hz (12ms) so 200 FPS doesn't
-			# multiply bezier samples, while always inserting immediately on turns.
+			# Insert poses tightly (~250 Hz / 4ms) and immediately on turns so ribbons stay glued to the actor.
 			var turned := Vector3(_tail["direction"]).dot(direction) < 0.995
-			if not turned and wall_ms - _last_pose_wall_ms < 12.0:
+			if not turned and wall_ms - _last_pose_wall_ms < 4.0:
 				_tail["position"] = _xf.origin
 				_tail["direction"] = direction
 				_tail["time"] = wall_ms

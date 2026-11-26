@@ -199,7 +199,8 @@ func show_grade(grade: int, combo: int) -> void:
 	grade_age = 0.0
 
 # ---------------------------------------------------------------- input
-var _held_dirs: Array[int] = []
+func set_player_dir(_id: int, _dir: int) -> void:
+	pass
 
 func _dir_for_keycode(keycode: int) -> int:
 	match keycode:
@@ -209,19 +210,18 @@ func _dir_for_keycode(keycode: int) -> int:
 		KEY_DOWN, KEY_S: return 8
 	return 0
 
-func _unhandled_key_input(event: InputEvent) -> void:
+func _input(event: InputEvent) -> void:
 	if not active or not (event is InputEventKey):
-		if not active and not _held_dirs.is_empty():
-			_held_dirs.clear()
+		return
+	if not event.pressed or event.echo:
+		return
+	var focus_owner := get_viewport().gui_get_focus_owner()
+	if focus_owner is LineEdit or focus_owner is TextEdit:
 		return
 	var d := _dir_for_keycode(event.keycode)
-	if not event.pressed:
-		if d != 0:
-			_held_dirs.erase(d)
-			if not _held_dirs.is_empty() and on_dir.is_valid():
-				on_dir.call(_held_dirs[_held_dirs.size() - 1])
-		return
-	if event.echo:
+	if d != 0 and on_dir.is_valid():
+		on_dir.call(d)
+		get_viewport().set_input_as_handled()
 		return
 	if event.keycode in [KEY_Q, KEY_E, KEY_J, KEY_SPACE] and on_skill.is_valid():
 		on_skill.call()
@@ -231,11 +231,6 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		on_trace.call()
 		get_viewport().set_input_as_handled()
 		return
-	if d != 0 and on_dir.is_valid():
-		_held_dirs.erase(d)
-		_held_dirs.append(d)
-		on_dir.call(d)
-		get_viewport().set_input_as_handled()
 
 # ---------------------------------------------------------------- drawing
 func _process(delta: float) -> void:

@@ -204,6 +204,9 @@ end
 local function sync_player(p)
 	local sc = p.__scene
 	Host.scene_view:set_player(p.__objectID, p.__x, p.__y, p.__manor.colorID, p.__nick, p.__alive, sc.m_pDirectorObj == p)
+	if Host.scene_view.set_player_dir then
+		Host.scene_view:set_player_dir(p.__objectID, p.__dir or 0)
+	end
 end
 
 function CGameScene:AddPlayer(nObjectID, ctxBuf, posPixel, manorWidth)

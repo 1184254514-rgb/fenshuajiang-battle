@@ -1568,7 +1568,7 @@ func set_player(id: int, x: float, y: float, color_id: int, nick: String, alive:
 	else:
 		a["t_us"] = now_us
 	var d: Vector3 = p - a["last"]
-	if d.length() > 0.01 and d.length() < 4.0:
+	if not bool(a.get("has_dir", false)) and d.length() > 0.01 and d.length() < 4.0:
 		a["yaw"] = atan2(d.x, d.z) + PI
 	a["last"] = p
 	if network_replica and a.has("net_target") and node.position.distance_to(p) < 12.0:
@@ -1585,6 +1585,25 @@ func set_player(id: int, x: float, y: float, color_id: int, nick: String, alive:
 	var lab_col := Color(1, 0.35, 0.3) if is_director else Color(1, 1, 1)
 	if lab.modulate != lab_col:
 		lab.modulate = lab_col
+
+
+func set_player_dir(id: int, dir: int) -> void:
+	if not actors.has(id):
+		return
+	var yaw: float
+	match dir:
+		1: yaw = PI * 0.5          # Left (-X)
+		2: yaw = -PI * 0.5         # Right (+X)
+		4: yaw = 0.0               # Up (-Z)
+		8: yaw = PI                # Down (+Z)
+		_: return
+	var a: Dictionary = actors[id]
+	a["has_dir"] = true
+	a["yaw"] = yaw
+	var node: Node3D = a.get("node")
+	if is_instance_valid(node) and players.has(id) and bool(players[id].get("director", false)):
+		# Instant facing snap for the local player so turns feel zero-latency.
+		node.rotation.y = yaw
 
 
 # Character state effects (Claude): equip.txt szFx<colour> = fx/cfg/benpao_<colour+1>.eft; the effect whose
