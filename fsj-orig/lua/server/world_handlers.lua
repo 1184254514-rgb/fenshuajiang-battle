@@ -587,7 +587,12 @@ function FakeWorld.ApplyMatchRank(rank)
 		if type(base.SetLadderStarChangeTime) == "function" then pcall(base.SetLadderStarChangeTime, base, os.time()) end
 	end
 	local season = value(db, "m_SeasonStarNum")
-	if season then set_data(season, 0, after) end
+	if season then
+		local count = get_data_max(season, 36)
+		local cur_season = (g_App and type(g_App.GetCurLadderSeason) == "function" and tonumber(g_App:GetCurLadderSeason())) or 0
+		set_data(season, cur_season % math.max(1, count), after)
+		set_data(season, 0, after)
+	end
 	local gs = g_App and g_App.GetGameStart and g_App:GetGameStart()
 	if gs and type(gs.RefreshLadder) == "function" then pcall(gs.RefreshLadder, gs) end
 	local info = FakeWorld.GetRankInfo(after)
@@ -1141,9 +1146,11 @@ function FakeWorld.FillPlayerDB(db, profile)
 
 	local season = value(db, "m_SeasonStarNum")
 	if season then
-		local count = get_data_max(season, 36)
+		local count = math.max(1, get_data_max(season, 36))
+		local cur_season = (g_App and type(g_App.GetCurLadderSeason) == "function" and tonumber(g_App:GetCurLadderSeason())) or 0
+		local cur_idx = cur_season % count
 		for i = 0, count - 1 do
-			set_data(season, i, i == 0 and number(profile.stars, 0) or 0)
+			set_data(season, i, (i == 0 or i == cur_idx) and number(profile.stars, 0) or 0)
 		end
 	end
 
@@ -1578,7 +1585,7 @@ end
 H.CCheckEnterRoom = function(conn, msg)
 	respond(conn, "CAnswerCheckEnterRoom", {
 		m_nRoomType = message_id(msg, "m_nRoomType"),
-		m_nResult = 1,
+		m_nResult = 0,
 	})
 end
 
