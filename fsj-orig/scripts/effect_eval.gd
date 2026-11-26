@@ -579,7 +579,8 @@ func _resolve_frame(index: int, context: Dictionary) -> Transform3D:
 		var rotation_axis: Vector3 = safe_normal(
 			angular_velocity, safe_normal(axes.x.cross(axes.y), Vector3.BACK)
 		)
-		matrix.basis = matrix.basis * Basis(rotation_axis, -angle) * axes
+		var rot_angle: float = angle if bool(context.get("canvas", false)) else -angle
+		matrix.basis = matrix.basis * Basis(rotation_axis, rot_angle) * axes
 
 	var u1_frame: Callable = context.get("_u1_frame", Callable())
 	if u1_frame.is_valid():

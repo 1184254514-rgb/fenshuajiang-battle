@@ -1900,19 +1900,84 @@ end
 H.CAlterPlayerInfo = H.CAlterPlayerInfo or function()
 end
 
-H.CCreateTeam = function()
+local active_team_type = nil
+
+local function build_local_team(nType)
+	local b = g_App and g_App.m_CharContext and g_App.m_CharContext.m_CharBaseData
+	local account_id = (g_App and g_App.GetAccountID and g_App:GetAccountID()) or 10001
+	local nick = (b and b.GetNickName and b:GetNickName()) or "player"
+	local head_icon = math.max(0, ((b and b.GetCurHeadIcon and b:GetCurHeadIcon()) or 1) - 1)
+	local star = (b and b.GetCurLadderStar and b:GetCurLadderStar()) or 1
+	local skill_id = (SceneSkills and SceneSkills.selected) or (b and b.GetSkillID and b:GetSkillID()) or 1
+	if not (g_tblTabFile and g_tblTabFile.skill and g_tblTabFile.skill[skill_id]) then skill_id = 1 end
+	return {
+		nTeamID = 100001,
+		nType = nType,
+		nCount = 1,
+		members = {
+			[0] = {
+				nAccountID = account_id,
+				szName = nick,
+				nCurHeadIcon = head_icon,
+				nCurLadderStar = star,
+				nSkillID = skill_id,
+				bCaptain = true,
+				bReady = true,
+				nPos = 0,
+			},
+		},
+	}
+end
+
+H.CCreateTeam = function(_conn, msg)
+	local nType = msg and msg.nType or eMRT_Team or 1
+	active_team_type = nType
+	local gs = g_App and g_App.GetGameStart and g_App:GetGameStart()
+	local wnd = gs and gs.GetTeamWnd and gs:GetTeamWnd(nType)
+	if wnd and wnd.OnSyncTeamInfo then
+		wnd:OnSyncTeamInfo(build_local_team(nType))
+	elseif SceneMatch and SceneMatch.Start then
+		SceneMatch.Start()
+	end
 end
 
 H.CJoinTeam = function()
 end
 
 H.CStartMatchTeam = function()
+	local gs = g_App and g_App.GetGameStart and g_App:GetGameStart()
+	if gs and active_team_type ~= nil and gs.GetTeamWnd then
+		local wnd = gs:GetTeamWnd(active_team_type)
+		if wnd and wnd.ShowWnd then wnd:ShowWnd(false) end
+	end
+	if g_App and g_App.WaitMsg then g_App:WaitMsg(false) end
+	if SceneMatch and SceneMatch.Start then
+		SceneMatch.Start()
+	end
 end
 
 H.CStopMatchTeam = function()
+	local gs = g_App and g_App.GetGameStart and g_App:GetGameStart()
+	if gs and active_team_type ~= nil and gs.GetTeamWnd then
+		local wnd = gs:GetTeamWnd(active_team_type)
+		if wnd and wnd.OnStopMatch then wnd:OnStopMatch() end
+	end
 end
 
-H.CLeaveTeam = function()
+H.CLeaveTeam = function(_conn, msg)
+	local gs = g_App and g_App.GetGameStart and g_App:GetGameStart()
+	if msg and msg.bCreateNewTeam and active_team_type ~= nil then
+		local wnd = gs and gs.GetTeamWnd and gs:GetTeamWnd(active_team_type)
+		if wnd and wnd.OnSyncTeamInfo then
+			wnd:OnSyncTeamInfo(build_local_team(active_team_type))
+			return
+		end
+	end
+	if gs and active_team_type ~= nil and gs.GetTeamWnd then
+		local wnd = gs:GetTeamWnd(active_team_type)
+		if wnd and wnd.ShowWnd then wnd:ShowWnd(false) end
+	end
+	active_team_type = nil
 end
 
 H.CQueryChangeMatchPos = function()
