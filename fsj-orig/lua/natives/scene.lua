@@ -641,8 +641,9 @@ local function enter_node(sc, p, x, y, previous_idx)
 			p.__trailUnder = p.__trailUnder or {}
 			p.__trailUnder[idx] = sc.__val and sc.__val[idx] or 0
 			p.__trail[#p.__trail + 1] = idx
-			set_val(sc, idx, const("InitLineRhythmID", 3))
+			local live_grade = p.__lastGrade ~= nil and p.__lastGrade or const("InitLineRhythmID", 3)
 			set_cell(sc, idx, nil, p.__objectID)
+			set_val(sc, idx, live_grade)
 			if #p.__trail == 1 then Connections.Connect(sc, p, previous_idx, idx) end
 		end
 	end
