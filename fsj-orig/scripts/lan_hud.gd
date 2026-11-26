@@ -19,9 +19,41 @@ var _poll_left := 0.0
 var _cached_replay: Control = null
 var _cached_login_btn: Control = null
 var _last_replay_is_client: int = -1
+var _login_anim_t: float = 0.0
+var _login_btn_scale: float = 1.0
+var _lan_btn_scale: float = 1.0
+var _login_hovered: bool = false
+var _login_pressed: bool = false
+var _login_signals_bound: bool = false
 const INK := Color("14364b")
 const CREAM := Color("fff8df")
 var font: Font = preload("res://fonts/ZCOOLKuaiLe-Regular.ttf")
+
+class LoginButtonSheen extends Control:
+	var phase: float = 0.0
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		clip_contents = true
+
+	func _draw() -> void:
+		# Periodic soft diagonal light sweep across the button face (0.0..1.0 active window).
+		if phase < 0.0 or phase > 1.0:
+			return
+		var w := size.x
+		var h := size.y
+		var cx := lerpf(-48.0, w + 48.0, phase)
+		var alpha := sin(phase * PI) * 0.28
+		var slant := 18.0
+		var half_w := 18.0
+		var poly := PackedVector2Array([
+			Vector2(cx - half_w + slant, 5.0),
+			Vector2(cx + half_w + slant, 5.0),
+			Vector2(cx + half_w - slant, h - 10.0),
+			Vector2(cx - half_w - slant, h - 10.0),
+		])
+		draw_colored_polygon(poly, Color(1.0, 1.0, 1.0, alpha))
 
 class NativeLoginButton extends Button:
 	var _tex: Texture2D = preload("res://assets/tex/fs_jm002.png")
@@ -125,7 +157,11 @@ func _ready() -> void:
 	entry.name = "LanEntryButton"
 	entry.position = Vector2(652, 581)
 	entry.size = Vector2(183, 75)
+	entry.pivot_offset = entry.size * 0.5
 	entry.pressed.connect(func(): opened = true)
+	var lan_sheen := LoginButtonSheen.new()
+	lan_sheen.name = "LoginButtonSheen"
+	entry.add_child(lan_sheen)
 	add_child(entry)
 	entry.hide()
 	layer = ColorRect.new()
@@ -163,7 +199,57 @@ func _ready() -> void:
 	layer.hide()
 	if "--lan" in OS.get_cmdline_user_args() or OS.has_feature("lan_build"): opened = true
 
+func _ensure_login_btn_fx(btn: Control) -> void:
+	if btn == null or not is_instance_valid(btn):
+		return
+	btn.pivot_offset = btn.size * 0.5
+	if btn.get_node_or_null("LoginButtonSheen") == null:
+		var sheen := LoginButtonSheen.new()
+		sheen.name = "LoginButtonSheen"
+		btn.add_child(sheen)
+	if not _login_signals_bound:
+		_login_signals_bound = true
+		btn.mouse_entered.connect(func(): _login_hovered = true)
+		btn.mouse_exited.connect(func(): _login_hovered = false; _login_pressed = false)
+		btn.gui_input.connect(func(ev: InputEvent):
+			if ev is InputEventMouseButton and ev.button_index == MOUSE_BUTTON_LEFT:
+				_login_pressed = ev.pressed
+			elif ev is InputEventScreenTouch:
+				_login_pressed = ev.pressed)
+
+func _animate_login_buttons(delta: float) -> void:
+	if not entry.visible:
+		return
+	_login_anim_t += delta
+	var k := 1.0 - exp(-22.0 * delta)
+	var breath := 1.0 + 0.018 * sin(_login_anim_t * 2.6)
+	var sweep_cycle := fmod(_login_anim_t, 3.2)
+	var login_phase := sweep_cycle / 0.65 if sweep_cycle < 0.65 else -1.0
+	var lan_sweep := fmod(_login_anim_t + 0.25, 3.2)
+	var lan_phase := lan_sweep / 0.65 if lan_sweep < 0.65 else -1.0
+
+	if _cached_login_btn != null and is_instance_valid(_cached_login_btn) and _cached_login_btn.is_visible_in_tree():
+		_ensure_login_btn_fx(_cached_login_btn)
+		var target_s := 0.93 if _login_pressed else (1.06 if _login_hovered else breath)
+		_login_btn_scale = lerpf(_login_btn_scale, target_s, k)
+		_cached_login_btn.scale = Vector2(_login_btn_scale, _login_btn_scale)
+		_cached_login_btn.modulate = Color(1.07, 1.07, 1.07, 1.0) if (_login_hovered and not _login_pressed) else Color.WHITE
+		var ls := _cached_login_btn.get_node_or_null("LoginButtonSheen") as LoginButtonSheen
+		if ls != null:
+			ls.phase = login_phase
+			ls.queue_redraw()
+
+	entry.pivot_offset = entry.size * 0.5
+	var lan_target := 0.93 if entry.is_pressed() else (1.06 if entry.is_hovered() else breath)
+	_lan_btn_scale = lerpf(_lan_btn_scale, lan_target, k)
+	entry.scale = Vector2(_lan_btn_scale, _lan_btn_scale)
+	var es := entry.get_node_or_null("LoginButtonSheen") as LoginButtonSheen
+	if es != null:
+		es.phase = lan_phase
+		es.queue_redraw()
+
 func _process(delta: float) -> void:
+	_animate_login_buttons(delta)
 	_poll_left -= delta
 	if _poll_left > 0.0: return
 	_poll_left = 0.1
