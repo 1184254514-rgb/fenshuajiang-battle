@@ -21,11 +21,47 @@ var _cached_login_btn: Control = null
 var _last_replay_is_client: int = -1
 const INK := Color("14364b")
 const CREAM := Color("fff8df")
-const BTN_GREEN := Color("00c466")
-const BTN_GREEN_HOVER := Color("19d87c")
-const BTN_GREEN_PRESS := Color("00a655")
-const BTN_GREEN_LIP := Color("00944b")
 var font: Font = preload("res://fonts/ZCOOLKuaiLe-Regular.ttf")
+
+class NativeLoginButton extends Button:
+	var _tex: Texture2D = preload("res://assets/tex/fs_jm002.png")
+	var _sys_font: SystemFont = null
+	var _caption: String = ""
+
+	func _init(caption_text: String) -> void:
+		_caption = caption_text
+		text = ""
+		flat = true
+		focus_mode = Control.FOCUS_NONE
+		_sys_font = SystemFont.new()
+		_sys_font.font_names = ["Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", "SimHei"]
+		var empty := StyleBoxEmpty.new()
+		for k in ["normal", "hover", "pressed", "focus", "disabled"]:
+			add_theme_stylebox_override(k, empty)
+
+	func _notification(what: int) -> void:
+		if what == NOTIFICATION_MOUSE_ENTER or what == NOTIFICATION_MOUSE_EXIT:
+			queue_redraw()
+
+	func _draw() -> void:
+		if _tex == null:
+			return
+		var down := is_pressed()
+		var hover := is_hovered() and not down
+		var top_y := 6.0 if down else 1.0
+		var bot_y := 101.0 if down else 102.0
+		var h := bot_y - top_y
+		var w := size.x
+		var tint := Color(1.06, 1.06, 1.06, 1.0) if hover else Color.WHITE
+		# Exact 3-slice coordinates from login.json -> denglu (fs_jm002.tex)
+		draw_texture_rect_region(_tex, Rect2(0.0, top_y, 20.0, h), Rect2(229.0, 8.0, 20.0, 117.0), tint)
+		draw_texture_rect_region(_tex, Rect2(20.0, top_y, maxf(0.0, w - 40.0), h), Rect2(252.0, 8.0, 1.0, 117.0), tint)
+		draw_texture_rect_region(_tex, Rect2(w - 20.0, top_y, 20.0, h), Rect2(257.0, 8.0, 20.0, 117.0), tint)
+		var fsize := 28
+		var tsize := _sys_font.get_string_size(_caption, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize)
+		var tx := (w - tsize.x) * 0.5
+		var ty := (8.0 + 49.0 * 0.5) + (_sys_font.get_ascent(fsize) - _sys_font.get_descent(fsize)) * 0.5 + (4.0 if down else 0.0)
+		draw_string(_sys_font, Vector2(tx, ty), _caption, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, Color("fffef2"))
 
 func style(fill: Color) -> StyleBoxFlat:
 	var box := StyleBoxFlat.new()
@@ -34,31 +70,6 @@ func style(fill: Color) -> StyleBoxFlat:
 	box.set_border_width_all(3)
 	box.set_corner_radius_all(12)
 	return box
-
-func login_style(fill: Color, lip: Color, pressed: bool = false) -> StyleBoxFlat:
-	var box := StyleBoxFlat.new()
-	box.bg_color = fill
-	box.border_color = lip
-	box.border_width_left = 0
-	box.border_width_right = 0
-	box.border_width_top = 0
-	box.border_width_bottom = 2 if pressed else 5
-	box.set_corner_radius_all(12)
-	box.shadow_color = Color(0.0, 0.25, 0.20, 0.24)
-	box.shadow_size = 4
-	box.shadow_offset = Vector2(0, 2 if pressed else 4)
-	return box
-
-func apply_login_button_theme(node: Button, font_size: int = 26) -> void:
-	node.add_theme_font_override("font", font)
-	node.add_theme_font_size_override("font_size", font_size)
-	for key in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
-		node.add_theme_color_override(key, Color.WHITE)
-	node.add_theme_color_override("font_disabled_color", Color(0.85, 0.95, 0.90, 0.75))
-	node.add_theme_stylebox_override("normal", login_style(BTN_GREEN, BTN_GREEN_LIP, false))
-	node.add_theme_stylebox_override("hover", login_style(BTN_GREEN_HOVER, BTN_GREEN_LIP, false))
-	node.add_theme_stylebox_override("pressed", login_style(BTN_GREEN_PRESS, BTN_GREEN_LIP, true))
-	node.add_theme_stylebox_override("focus", login_style(BTN_GREEN, BTN_GREEN_LIP, false))
 
 func theme_control(control: Control, size: int = 22) -> void:
 	control.add_theme_font_override("font", font)
@@ -110,9 +121,12 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	z_index = 3100
-	entry = button(self, "局域网联机", Vector2(652, 581), Vector2(183, 75), func(): opened = true)
+	entry = NativeLoginButton.new("局域网联机")
 	entry.name = "LanEntryButton"
-	apply_login_button_theme(entry, 26)
+	entry.position = Vector2(652, 581)
+	entry.size = Vector2(183, 75)
+	entry.pressed.connect(func(): opened = true)
+	add_child(entry)
 	entry.hide()
 	layer = ColorRect.new()
 	layer.color = Color(0.025, 0.08, 0.15, 0.72)
@@ -158,23 +172,16 @@ func _process(delta: float) -> void:
 	var should_show := not in_game and (opened or connected)
 	if layer.visible != should_show:
 		layer.visible = should_show
-	var show_entry := not in_game and not should_show
+	if _cached_login_btn == null or not is_instance_valid(_cached_login_btn):
+		_cached_login_btn = get_parent().find_child("denglu", true, false) as Control
+	var on_login := _cached_login_btn != null and _cached_login_btn.is_visible_in_tree()
+	var show_entry := not in_game and not should_show and on_login
 	if show_entry:
-		if _cached_login_btn == null or not is_instance_valid(_cached_login_btn):
-			_cached_login_btn = get_parent().find_child("denglu", true, false) as Control
-		var on_login := _cached_login_btn != null and _cached_login_btn.is_visible_in_tree()
-		if on_login:
-			# Pair 登录 (left) and 局域网联机 (right) symmetrically on the 1280px login baseline.
-			if absf(_cached_login_btn.position.x - 549.0) < 2.0:
-				_cached_login_btn.position.x = 445.0
-			entry.position = Vector2(652, 581)
-			entry.size = Vector2(183, 75)
-			entry.add_theme_font_size_override("font_size", 26)
-		else:
-			# Lobby bottom bar: fit cleanly in the open gap between 聊天 (x<=489) and 技能 (x>=683).
-			entry.position = Vector2(502, 636)
-			entry.size = Vector2(168, 64)
-			entry.add_theme_font_size_override("font_size", 22)
+		# Pair 登录 (left) and 局域网联机 (right) symmetrically on the 1280px login baseline.
+		if absf(_cached_login_btn.position.x - 549.0) < 2.0:
+			_cached_login_btn.position.x = 445.0
+		entry.position = Vector2(652, 581)
+		entry.size = Vector2(183, 75)
 	if entry.visible != show_entry:
 		entry.visible = show_entry
 	if should_show:
